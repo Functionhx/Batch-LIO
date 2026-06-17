@@ -91,5 +91,9 @@ add_executable(batchlio_mapping src/laserMapping.cpp
 target_link_libraries(batchlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
 target_include_directories(batchlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 
+# batch-LIO de-skew unit test (standalone, header-only Eigen, no ROS)
+add_executable(test_deskew test/test_deskew.cpp)
+target_include_directories(test_deskew PRIVATE ${EIGEN3_INCLUDE_DIR})
+
 
 
