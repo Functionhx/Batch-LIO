@@ -112,15 +112,20 @@ Eigen::Matrix<double, 30, 30> df_dx_output(state_output &s, const input_ikfom &i
 void h_model_input(state_input &s, Eigen::Matrix3d cov_p, Eigen::Matrix3d cov_R, esekfom::dyn_share_modified<double> &ekfom_data)
 {
 	bool match_in_map = false;
-	VF(4) pabcd;
-	pabcd.setZero();
 	normvec->resize(time_seq[k]);
 	int effect_num_k = 0;
+	// batch-LIO: parallelize the per-point KNN + plane-fit pass. Each iteration writes only
+	// j-indexed slots (point_selected_surf, normvec, Nearest_Points, feats_down_world), so there
+	// are no cross-iteration write conflicts; pabcd is made loop-private (was shared above) and
+	// effect_num_k is reduced. The Jacobian-assembly pass below stays serial (sequential row m).
+	#pragma omp parallel for schedule(dynamic) reduction(+:effect_num_k)
 	for (int j = 0; j < time_seq[k]; j++)
 	{
+		VF(4) pabcd;
+		pabcd.setZero();
 		PointType &point_body_j  = feats_down_body->points[idx+j+1];
 		PointType &point_world_j = feats_down_world->points[idx+j+1];
-		pointBodyToWorld(&point_body_j, &point_world_j); 
+		pointBodyToWorld(&point_body_j, &point_world_j);
 		V3D p_body = pbody_list[idx+j+1];
 		double p_norm = p_body.norm();
 		V3D p_world;
@@ -218,15 +223,20 @@ void h_model_input(state_input &s, Eigen::Matrix3d cov_p, Eigen::Matrix3d cov_R,
 void h_model_output(state_output &s, Eigen::Matrix3d cov_p, Eigen::Matrix3d cov_R, esekfom::dyn_share_modified<double> &ekfom_data)
 {
 	bool match_in_map = false;
-	VF(4) pabcd;
-	pabcd.setZero();
 	normvec->resize(time_seq[k]);
 	int effect_num_k = 0;
+	// batch-LIO: parallelize the per-point KNN + plane-fit pass. Each iteration writes only
+	// j-indexed slots (point_selected_surf, normvec, Nearest_Points, feats_down_world), so there
+	// are no cross-iteration write conflicts; pabcd is made loop-private (was shared above) and
+	// effect_num_k is reduced. The Jacobian-assembly pass below stays serial (sequential row m).
+	#pragma omp parallel for schedule(dynamic) reduction(+:effect_num_k)
 	for (int j = 0; j < time_seq[k]; j++)
 	{
+		VF(4) pabcd;
+		pabcd.setZero();
 		PointType &point_body_j  = feats_down_body->points[idx+j+1];
 		PointType &point_world_j = feats_down_world->points[idx+j+1];
-		pointBodyToWorld(&point_body_j, &point_world_j); 
+		pointBodyToWorld(&point_body_j, &point_world_j);
 		V3D p_body = pbody_list[idx+j+1];
 		double p_norm = p_body.norm();
 		V3D p_world;

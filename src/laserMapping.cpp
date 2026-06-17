@@ -11,6 +11,7 @@
 #include <tf/transform_broadcaster.h>
 #include "li_initialization.h"
 #include <malloc.h>
+#include <omp.h>
 // #include <cv_bridge/cv_bridge.h>
 // #include "matplotlibcpp.h"
 // #include <ros/console.h>
@@ -320,6 +321,12 @@ int main(int argc, char** argv)
     ros::AsyncSpinner spinner(0);
     spinner.start();
     readParameters(nh);
+    // batch-LIO: OpenMP thread count for the per-point KNN+plane-fit loop.
+    // batch_omp off => single thread (matches Point-LIO point-wise behavior exactly).
+    if (batch_omp) omp_set_num_threads(std::min(omp_get_max_threads(), 16));
+    else           omp_set_num_threads(1);
+    printf("[batch-LIO] batch_dt=%.5f s, batch_omp=%d, omp_max_threads=%d\n",
+           batch_dt, (int)batch_omp, omp_get_max_threads());
     cout<<"lidar_type: "<<lidar_type<<endl;
     ivox_ = std::make_shared<IVoxType>(ivox_options_);
     

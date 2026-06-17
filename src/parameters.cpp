@@ -39,6 +39,8 @@ double lidar_time_inte = 0.1, first_imu_time = 0.0;
 int cut_frame_num = 1, orig_odom_freq = 10;
 double online_refine_time = 20.0; //unit: s
 bool cut_frame_init = false; // true;
+bool   batch_omp = false;     // batch-LIO: OpenMP on per-point KNN+plane-fit loop
+double batch_dt  = 0.001;     // batch-LIO: batch window length [s]; <=0 => point-wise (~Point-LIO)
 
 MeasureGroup Measures;
 
@@ -53,6 +55,8 @@ void readParameters(ros::NodeHandle &nh)
   nh.param<bool>("check_satu", check_satu, 1);
   nh.param<int>("init_map_size", init_map_size, 100);
   nh.param<bool>("space_down_sample", space_down_sample, 1);
+  nh.param<bool>("batch_omp", batch_omp, false);
+  nh.param<double>("batch_dt", batch_dt, 0.001);
   nh.param<double>("mapping/satu_acc",satu_acc,3.0);
   nh.param<double>("mapping/satu_gyro",satu_gyro,35.0);
   nh.param<double>("mapping/acc_norm",acc_norm,1.0);
