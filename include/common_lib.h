@@ -164,6 +164,31 @@ std::vector<int> time_compressing(const PointCloudXYZI::Ptr &point_cloud)
   return time_seq;
 }
 
+// batch-LIO: group points into fixed time windows of win_ms milliseconds.
+// curvature holds milliseconds since scan start; points are sorted ascending by it.
+// time_seq[k] = number of consecutive points falling in window k
+//   (window index = (long)(curvature / win_ms)).
+// win_ms <= 0 degenerates to the original per-timestamp grouping (== Point-LIO).
+template<typename T>
+std::vector<int> time_compressing_batch(const PointCloudXYZI::Ptr &point_cloud, double win_ms)
+{
+  int points_size = point_cloud->points.size();
+  std::vector<int> time_seq;
+  if (points_size == 0) return time_seq;
+  if (win_ms <= 0.0) return time_compressing<T>(point_cloud);
+  time_seq.reserve(points_size);
+  int  count   = 1;
+  long cur_win = (long)(point_cloud->points[0].curvature / win_ms);  // curvature >= 0
+  for (int i = 1; i < points_size; i++)
+  {
+    long w = (long)(point_cloud->points[i].curvature / win_ms);
+    if (w == cur_win) { count++; }
+    else { time_seq.emplace_back(count); count = 1; cur_win = w; }
+  }
+  time_seq.emplace_back(count);
+  return time_seq;
+}
+
 /* comment
 plane equation: Ax + By + Cz + D = 0
 convert to: A/D*x + B/D*y + C/D*z = -1

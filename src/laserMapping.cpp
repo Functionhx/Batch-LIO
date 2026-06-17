@@ -500,7 +500,7 @@ int main(int argc, char** argv)
                 sort(feats_down_body->points.begin(), feats_down_body->points.end(), time_list); 
             }
             {
-                time_seq = time_compressing<int>(feats_down_body);
+                time_seq = time_compressing_batch<int>(feats_down_body, batch_dt * 1000.0);  // batch-LIO: 1ms windows (batch_dt s -> ms)
                 feats_down_size = feats_down_body->points.size();
             }
 
