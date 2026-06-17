@@ -1,184 +1,134 @@
-# Point-LIO
-## Point-LIO: Robust High-Bandwidth Lidar-Inertial Odometry
+# batch-LIO
 
-## 1. Introduction
+**A batch-wise extension of [Point-LIO](https://github.com/hku-mars/Point-LIO): per-~1 ms batch EKF update with in-batch motion de-skew, for high-bandwidth, lower-compute LiDAR-inertial odometry.**
 
-<div align="center">
-    <div align="center">
-        <img src="https://github.com/hku-mars/Point-LIO/raw/master/image/toc4.png" width = 75% >
-    </div>
-    <font color=#a0a0a0 size=2>The framework and key points of the Point-LIO.</font>
-</div>
+This repo reproduces **innovation #1** of the undergraduate thesis *《高带宽轮式激光惯性里程计》(Point-LIWO — Batch-based Direct Point LiDAR-IMU-Wheeled-speed Odometry)*, USTC, by 张昊鹏. It is built directly on HKU-MARS **Point-LIO** and kept A/B-comparable with it (CPU-only; wheel-speed / innovation #2 is out of scope).
 
-**New features:**
-1. high odometry output frequency, 4k-8kHz.
-2. robust to IMU saturation and severe vibration, and other aggressive motions (75 rad/s in our test).
-3. no motion distortion.
-4. computationally efficient, robust, versatile on public datasets with general motions. 
-5. As a LiDAR odometry, Point-LIO could be used in various autonomous tasks, such as trajectory planning, control, and perception, especially in cases involving very fast ego-motions (e.g., in the presence of severe vibration and high angular or linear velocity) or requiring high-rate odometry output and mapping (e.g., for high-rate feedback control and perception).
+> Status: reproduction + evaluation complete and validated. Tested with `osrf/ros:noetic-desktop-full` on x86_64.
 
-**Important notes:**
+---
 
-A. Please make sure the IMU and LiDAR are **Synchronized**, that's important.
+## What it changes vs Point-LIO
 
-B. Please obtain the saturation values of your used IMU (i.e., accelerator and gyroscope), and the units of the accelerator of your used IMU, then modify the .yaml file according to those settings, including values of 'satu_acc', 'satu_gyro', 'acc_norm'. That's improtant.
+Point-LIO updates the EKF **point-wise** (one update per distinct point timestamp) and already row-stacks the measurement Jacobian over a group of same-timestamp points. batch-LIO changes two things and adds OpenMP:
 
-C. The warning message "Failed to find match for field 'time'." means the timestamps of each LiDAR points are missed in the rosbag file. That is important because Point-LIO processes at the sampling time of each LiDAR point.
+1. **1 ms time-window grouping** — points are grouped into fixed ~1 ms windows instead of by identical timestamp (`time_compressing_batch`, `include/common_lib.h`).
+2. **In-batch de-skew** — because a window now spans many timestamps, each point is motion-compensated to the window's reference (last-point) time using the EKF state's angular/linear velocity, then all valid residuals are row-stacked into a **single EKF update per window** (`src/deskew.h`, applied in `src/laserMapping.cpp`). This implements thesis eq. 3.44–3.47:
 
-D. We recommend to set the **extrinsic_est_en** to false if the extrinsic is given. As for the extrinsic initiallization, please refer to our recent work: [**Robust and Online LiDAR-inertial Initialization**](https://github.com/hku-mars/LiDAR_IMU_Init).
+   ```
+   Δtⱼ = tⱼ − t_last                 (≤ 0 within a window)
+   Rⱼ  = Exp(ω · Δtⱼ)                (ω = state body angular velocity)
+   Tⱼ  = R_Iᵀ · v · Δtⱼ              (v = state world linear velocity; R_I = state rotation)
+   p'ⱼ = Rⱼ · pⱼ + Tⱼ
+   ```
 
-E. If a high odometry output frequency without downsample is required, set ``` publish_odometry_without_downsample ``` as true. Then the warning message of tf "TF_REPEATED_DATA" will pop up in the terminal window, because the time interval between two publish odometery is too small. The following command could be used to suppress this warning to a smaller frequency:
+3. **OpenMP** on the per-point KNN + plane-fit loop (`src/Estimator.cpp`). Crucially, OpenMP only pays off **after** batching enlarges the groups — on Point-LIO's tiny per-timestamp groups it is *slower* (fork/join overhead).
 
-in your catkin_ws/src,
+All changes are gated by ROS params (defaults make it equivalent to Point-LIO when `batch_dt ≤ 0`):
 
-git clone --branch throttle-tf-repeated-data-error git@github.com:BadgerTechnologies/geometry2.git
+| param | default | meaning |
+|-------|---------|---------|
+| `batch_dt` | `0.001` | batch window length in **seconds** (`≤ 0` ⇒ point-wise, i.e. Point-LIO) |
+| `batch_omp` | `false` | OpenMP on the KNN+plane-fit loop |
+| `batch_deskew` | `true` | in-window de-skew on/off (ablation toggle) |
 
-Then rebuild, source setup.bash, run and then it should be reduced down to once every 10 seconds. If 10 seconds is still too much log output then change the ros::Duration(10.0) to 10000 seconds or whatever you like.
+---
 
-F. If you want to use Point-LIO without imu, set the "imu_en" as false, and provide a predefined value of gavity in "gravity_init" as true as possible in the yaml file, and keep the "use_imu_as_input" as 0.
+## Results
 
-## **1.1. Developers:**
-The codes of this repo are contributed by:
-[Dongjiao He (贺东娇)](https://github.com/Joanna-HE) and [Wei Xu (徐威)](https://github.com/XW-HKU)
+A/B vs pristine Point-LIO, same bag and parameters, CPU-only on a 32-core x86_64 machine. Full numbers and method in [`docs/RESULTS.md`](docs/RESULTS.md).
 
+### Per-frame compute: 2.3–3.6× faster, equal-or-better accuracy
+![speedup](docs/figures/fig1_speedup.png)
 
-## **1.2. Related paper**
-Our paper is published on Advanced Intelligent Systems(AIS). [Point-LIO](https://onlinelibrary.wiley.com/doi/epdf/10.1002/aisy.202200459), DOI: 10.1002/aisy.202200459
+batch-LIO matches the baseline trajectory to ~3 cm mean over a 103 m path (HKU_MB), and closes the `outdoor_run` loop *better* than baseline (0.020 m vs 0.073 m).
 
+### OpenMP only helps after batching ("batch enables parallelism")
+![omp](docs/figures/fig2_omp_causality.png)
 
-## **1.3. Related video**
-Our accompany video is available on **YouTube**.
-<div align="center">
-    <a href="https://youtu.be/oS83xUs42Uw" target="_blank"><img src="https://github.com/hku-mars/Point-LIO/raw/master/image/final.png" width=60% /></a>
-</div>
+### De-skew correctness (20 ms window probe): 8× lower drift
+![deskew](docs/figures/fig3_deskew.png)
 
-## 2. What can Point-LIO do?
-### 2.1 Simultaneous LiDAR localization and mapping (SLAM) without motion distortion
+This probe also resolved an ambiguity in the thesis: the correct same-frame transform is `Tⱼ = R_Iᵀ·v·Δtⱼ` (not a literal world-frame `v·Δtⱼ`).
 
-### 2.2 Produce high odometry output frequence and high bandwidth
+### batch_dt sweep: 1–2 ms is the sweet spot
+![sweep](docs/figures/fig4_batchdt_sweep.png)
 
-### 2.3 SLAM with aggressive motions even the IMU is saturated
+### High output bandwidth (publish per window)
+| mode | stable odom rate |
+|------|------------------|
+| Point-LIO frame-rate odom | ~10 Hz |
+| **batch-LIO 1 ms (publish per window)** | **~913 Hz** |
+| Point-LIO point-wise (publish per point) | ~6.7 kHz (per-point, noisy) |
 
-# **3. Prerequisites**
+---
 
-## **3.1 Ubuntu and [ROS](https://www.ros.org/)**
-We tested our code on Ubuntu20.04 with noetic. Ubuntu18.04 and lower versions have problems of environments to support the Point-LIO, try to avoid using Point-LIO in those systems. Additional ROS package is required:
-```
-sudo apt-get install ros-xxx-pcl-conversions
-```
+## Build (Docker, ROS Noetic)
 
-## **3.2 Eigen**
-Following the official [Eigen installation](eigen.tuxfamily.org/index.php?title=Main_Page), or directly install Eigen by:
-```
-sudo apt-get install libeigen3-dev
-```
+```bash
+# 1) container (CPU-only, host network so a bag can be played from the host)
+docker run -d --name batch-lio --network host \
+  -v <host_workspace>:/root/ws -w /root/ws \
+  osrf/ros:noetic-desktop-full tail -f /dev/null
 
-## **3.3 livox_ros_driver**
-Follow [livox_ros_driver Installation](https://github.com/Livox-SDK/livox_ros_driver).
+# 2) dependencies (inside the container)
+docker exec batch-lio bash -lc 'apt-get update && apt-get install -y libgoogle-glog-dev'
+# Livox-SDK (provides the SDK that livox_ros_driver links against):
+#   git clone https://github.com/Livox-SDK/Livox-SDK && cd Livox-SDK/build && cmake .. && make -j && make install
+# livox_ros_driver (provides the CustomMsg message used by Avia bags):
+#   clone https://github.com/Livox-SDK/livox_ros_driver into your catkin_ws/src
 
-*Remarks:*
-- Since the Point-LIO supports Livox serials LiDAR, so the **livox_ros_driver** must be installed and **sourced** before run any Point-LIO luanch file.
-- How to source? The easiest way is add the line ``` source $Licox_ros_driver_dir$/devel/setup.bash ``` to the end of file ``` ~/.bashrc ```, where ``` $Licox_ros_driver_dir$ ``` is the directory of the livox ros driver workspace (should be the ``` ws_livox ``` directory if you completely followed the livox official document).
-
-## 4. Build
-Clone the repository and catkin_make:
-
-```
-    cd ~/$A_ROS_DIR$/src
-    git clone https://github.com/hku-mars/Point-LIO.git
-    cd Point-LIO
-    git submodule update --init
-    cd ../..
-    catkin_make
-    source devel/setup.bash
-```
-- Remember to source the livox_ros_driver before build (follow 3.3 **livox_ros_driver**)
-- If you want to use a custom build of PCL, add the following line to ~/.bashrc
-```export PCL_ROOT={CUSTOM_PCL_PATH}```
-
-## 5. Directly run
-
-### 5.1 For Avia
-Connect to your PC to Livox Avia LiDAR by following  [Livox-ros-driver installation](https://github.com/Livox-SDK/livox_ros_driver), then
-```
-    cd ~/$Point_LIO_ROS_DIR$
-    source devel/setup.bash
-    roslaunch point_lio mapping_avia.launch
-    roslaunch livox_ros_driver livox_lidar_msg.launch
-```
-- For livox serials, Point-LIO only support the data collected by the ``` livox_lidar_msg.launch ``` since only its ``` livox_ros_driver/CustomMsg ``` data structure produces the timestamp of each LiDAR point which is very important for Point-LIO. ``` livox_lidar.launch ``` can not produce it right now.
-- If you want to change the frame rate, please modify the **publish_freq** parameter in the [livox_lidar_msg.launch](https://github.com/Livox-SDK/livox_ros_driver/blob/master/livox_ros_driver/launch/livox_lidar_msg.launch) of [Livox-ros-driver](https://github.com/Livox-SDK/livox_ros_driver) before make the livox_ros_driver pakage.
-
-### 5.2 For Livox serials with external IMU
-
-mapping_avia.launch theratically supports mid-70, mid-40 or other livox serial LiDAR, but need to setup some parameters befor run:
-
-Edit ``` config/avia.yaml ``` to set the below parameters:
-
-1. LiDAR point cloud topic name: ``` lid_topic ```
-2. IMU topic name: ``` imu_topic ```
-3. Translational extrinsic: ``` extrinsic_T ```
-4. Rotational extrinsic: ``` extrinsic_R ``` (only support rotation matrix)
-- The extrinsic parameters in Point-LIO is defined as the LiDAR's pose (position and rotation matrix) in IMU body frame (i.e. the IMU is the base frame). They can be found in the official manual.
-5. Saturation value of IMU's accelerator and gyroscope: ```satu_acc```, ```satu_gyro```
-6. The norm of IMU's acceleration according to unit of acceleration messages: ``` acc_norm ```
-
-### 5.3 For Velodyne or Ouster (Velodyne as an example)
-
-Step A: Setup before run
-
-Edit ``` config/velodyne.yaml ``` to set the below parameters:
-
-1. LiDAR point cloud topic name: ``` lid_topic ```
-2. IMU topic name: ``` imu_topic ``` (both internal and external, 6-aixes or 9-axies are fine)
-3. Set the parameter ```timestamp_unit``` based on the unit of **time** (Velodyne) or **t** (Ouster) field in PoindCloud2 rostopic
-4. Line number (we tested 16, 32 and 64 line, but not tested 128 or above): ``` scan_line ```
-5. Translational extrinsic: ``` extrinsic_T ```
-6. Rotational extrinsic: ``` extrinsic_R ``` (only support rotation matrix)
-- The extrinsic parameters in Point-LIO is defined as the LiDAR's pose (position and rotation matrix) in IMU body frame (i.e. the IMU is the base frame).
-7. Saturation value of IMU's accelerator and gyroscope: ```satu_acc```, ```satu_gyro```
-8. The norm of IMU's acceleration according to unit of acceleration messages: ``` acc_norm ```
-
-Step B: Run below
-```
-    cd ~/$Point_LIO_ROS_DIR$
-    source devel/setup.bash
-    roslaunch point_lio mapping_velody16.launch
+# 3) build (catkin workspace with src/{livox_ros_driver, batch_lio})
+docker exec batch-lio bash -lc 'source /opt/ros/noetic/setup.bash && cd /root/ws/catkin_ws && catkin_make -j8'
 ```
 
-Step C: Run LiDAR's ros driver or play rosbag.
+Dependencies beyond `noetic-desktop-full`: **`libgoogle-glog-dev`** (Point-LIO's `ivox3d.h` needs glog) and **Livox-SDK** + **`livox_ros_driver`** (for the `livox_ros_driver/CustomMsg` LiDAR topic).
 
-### 5.4 PCD file save
-
-Set ``` pcd_save_enable ``` in launchfile to ``` 1 ```. All the scans (in global frame) will be accumulated and saved to the file ``` Point-LIO/PCD/scans.pcd ``` after the Point-LIO is terminated. ```pcl_viewer scans.pcd``` can visualize the point clouds.
-
-*Tips for pcl_viewer:*
-- change what to visualize/color by pressing keyboard 1,2,3,4,5 when pcl_viewer is running. 
-```
-    1 is all random
-    2 is X values
-    3 is Y values
-    4 is Z values
-    5 is intensity
+### Unit test (de-skew transform)
+```bash
+catkin_make && ./devel/lib/batch_lio/test_deskew   # -> ALL DESKEW TESTS PASSED
 ```
 
-# **6. Examples**
+---
 
-The example datasets could be downloaded through [onedrive](https://connecthkuhk-my.sharepoint.com/:f:/g/personal/hdj65822_connect_hku_hk/EmRJYy4ZfAlMiIJ786ogCPoBcGQ2BAchuXjE5oJQjrQu0Q?e=igu44W). Pay attention that if you want to test on racing_drone.bag, [0.0, 9.810, 0.0] should be input in 'mapping/gravity_init' in avia.yaml, and set the 'start_in_aggressive_motion' as true in the yaml. Because this bag start from a high speed motion. And for PULSAR.bag, we change the measuring range of the gyroscope of the built-in IMU to 17.5 rad/s. Therefore, when you test on this bag, please change 'satu_gyro' to 17.5 in avia.yaml.
+## Run
 
-## **6.1. Example-1: SLAM on datasets with aggressive motions where IMU is saturated**
-<div align="center">
-<img src="https://github.com/hku-mars/Point-LIO/raw/master/image/example1.gif"  width="40%" />
-<img src="https://github.com/hku-mars/Point-LIO/raw/master/image/example2.gif"  width="54%" />
-</div>
+Works on standard Livox Avia bags (`/livox/lidar` = `livox_ros_driver/CustomMsg`, `/livox/imu` = `sensor_msgs/Imu`), e.g. the HKU-MARS / FAST-LIO Avia sequences.
 
-## **6.2. Example-2: Application on FPV and PULSAR**
-<div align="center">
-<img src="https://github.com/hku-mars/Point-LIO/raw/master/image/example3.gif"  width="58%" />
-<img src="https://github.com/hku-mars/Point-LIO/raw/master/image/example4.gif"  width="35%" />
-</div>
+```bash
+roscore &
+roslaunch batch_lio mapping_avia.launch &        # or the headless scripts/avia_batch.launch
+rosbag play your_avia.bag
+```
 
-PULSAR is a self-rotating UAV actuated by only one motor, [PULSAR](https://github.com/hku-mars/PULSAR)
+A self-contained headless harness used for the A/B study lives in [`scripts/`](scripts):
+- `scripts/avia_batch.launch` — args `batch_dt`, `batch_omp`, `batch_deskew`, `pub_hifreq`
+- `scripts/run_lio.sh <launch> <bag> <outdir> [rate] [logsrc] ["launch:=args"]` — roscore → node → record `/aft_mapped_to_init` → play → harvest `Log/pos_log.txt`
+- `scripts/compare_traj.py <label> <pos_log> <node_log> [baseline_pos_log]` — timing + trajectory metrics
+- `scripts/ablations.sh` — the bandwidth / sweep / aggressive-bag runs
 
-## 7. Contact us
-If you have any questions about this work, please feel free to contact me <hdj65822ATconnect.hku.hk> and Dr. Fu Zhang <fuzhangAThku.hk> via email.
+Odometry is published on `/aft_mapped_to_init`; per-frame stage timings are printed as `[ mapping ]:` lines; the trajectory is logged to `Log/pos_log.txt` when `runtime_pos_log_enable` is set.
+
+---
+
+## Repository layout
+
+```
+src/            modified Point-LIO sources
+  deskew.h          NEW: in-batch de-skew (eq 3.44-3.47), header-only + unit-tested
+  laserMapping.cpp  batch grouping call + per-window de-skew before the EKF update + OMP thread control
+  Estimator.cpp     OpenMP on the KNN + plane-fit loop
+  parameters.*      batch_dt / batch_omp / batch_deskew params
+include/common_lib.h  time_compressing_batch (1 ms windows)
+test/test_deskew.cpp  standalone unit test for the de-skew transform
+docs/            PLAN.md, RESULTS.md, figures/
+scripts/         headless run + analysis harness
+```
+
+---
+
+## Attribution & license
+
+- Built on **[Point-LIO](https://github.com/hku-mars/Point-LIO)** (HKU-MARS); please cite Point-LIO and FAST-LIO. The batch-update idea reproduced here is from the USTC undergraduate thesis *《高带宽轮式激光惯性里程计》(Point-LIWO)* by 张昊鹏.
+- De-skew follows the FAST-LIO / sr_lio motion-compensation convention; the map uses an iVox-style hashed-voxel structure.
+- License follows the upstream Point-LIO / LOAM / Livox license — see [`LICENSE`](LICENSE). This is a research reproduction.
