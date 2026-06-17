@@ -1,0 +1,29 @@
+<launch>
+<!-- Headless batch-LIO launch on Livox AVIA bags.
+     Mirrors run/avia_baseline.launch (same Point-LIO params) but runs the batch_lio
+     package, with two extra params:
+       batch_dt  : batch time-window length in SECONDS (0.001 = 1ms). <=0 => point-wise (~Point-LIO).
+       batch_omp : enable OpenMP on the per-point KNN+plane-fit loop.
+     Override from CLI, e.g.:  roslaunch run/avia_batch.launch batch_dt:=0.00005 batch_omp:=1 -->
+
+	<arg name="batch_dt"     default="0.001" />
+	<arg name="batch_omp"    default="0" />
+	<arg name="batch_deskew" default="1" />
+
+	<node pkg="batch_lio" type="batchlio_mapping" name="laserMapping" output="screen" >
+	<rosparam command="load" file="$(find batch_lio)/config/avia.yaml" />
+	<param name="use_imu_as_input" type="bool" value="0"/>
+	<param name="prop_at_freq_of_imu" type="bool" value="1"/>
+	<param name="check_satu" type="bool" value="1"/>
+	<param name="init_map_size" type="int" value="10"/>
+	<param name="point_filter_num" type="int" value="1"/>
+	<param name="space_down_sample" type="bool" value="1" />
+	<param name="filter_size_surf" type="double" value="0.5" />
+	<param name="filter_size_map" type="double" value="0.4" />
+	<param name="ivox_nearby_type" type="int" value="6" />
+	<param name="runtime_pos_log_enable" type="bool" value="1" />
+	<param name="batch_dt"     type="double" value="$(arg batch_dt)" />
+	<param name="batch_omp"    type="bool"   value="$(arg batch_omp)" />
+	<param name="batch_deskew" type="bool"   value="$(arg batch_deskew)" />
+	</node>
+</launch>
