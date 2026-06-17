@@ -46,7 +46,39 @@ All three processed 2602/2602 frames (no drops at rate 2.0) and emitted 2602 odo
 
 ---
 
-## 3. Validation chain (incremental, each committed)
+## 3. Ablations
+
+### 3a. Output bandwidth (quick-shack, publish per window) — the "高带宽" headline
+| Mode | odom rate |
+|------|----------:|
+| Point-LIO point-wise (publish per point-group) | **~6.7 kHz** (matches paper's 4–8 kHz Point-LIO, but per-point ⇒ noisy/over-downsampled) |
+| batch 1 ms (publish per window) | **~913 Hz** (stable; the paper's selectable ~1000 Hz) |
+| baseline frame-rate odom | ~10 Hz |
+
+batch-LIO lifts stable odometry output from 10 Hz → ~913 Hz (~90×), the high-bandwidth claim.
+
+### 3b. batch_dt sweep (quick-shack, OMP on, de-skew on; baseline 7.69 ms / drift 0.072 m)
+| batch_dt | total ms | start→end drift | mean \|Δpos\| vs base |
+|---------:|---------:|----------------:|----------------------:|
+| 0.5 ms | 4.47 | 0.092 m | 0.056 m |
+| **1 ms** | 3.44 | **0.053 m** | 0.059 m |
+| **2 ms** | 2.72 | 0.066 m | 0.059 m |
+| 5 ms | 2.22 | 0.143 m | 0.104 m |
+| 10 ms | 1.99 | 3.67 m ⚠ | 1.81 m |
+| 20 ms | 1.85 | 0.509 m | 0.360 m |
+
+Speed rises monotonically with window size; accuracy holds through ~2 ms then degrades (constant-velocity-in-window assumption breaks). **1–2 ms is the sweet spot** — accuracy on par with / better than baseline at 2.3–2.8× speedup — empirically justifying the paper's 1 ms default.
+
+### 3c. Aggressive bag `outdoor_run_100Hz` (63 s, 6375 frames @100 Hz, a return-loop)
+| Config | total ms | start→end drift (loop closure) | traj len |
+|--------|---------:|-------------------------------:|---------:|
+| baseline (Point-LIO) | 1.98 | 0.073 m | 92.1 m |
+| **batch 1 ms, de-skew ON** | **0.66** | **0.020 m** | 97.2 m |
+| batch 1 ms, de-skew OFF | 0.67 | 0.039 m | 97.5 m |
+
+3× faster, and de-skew measurably helps at 1 ms under fast motion (loop-closure 0.020 vs 0.039 m, 2× better) — and beats baseline's 0.073 m. (On gentle quick-shack the 1 ms de-skew effect was sub-mm; its benefit scales with window × speed, as the 20 ms probe showed dramatically.)
+
+## 4. Validation chain (incremental, each committed)
 
 1. **Clone == baseline** (batch_dt=0): bit-exact trajectory (mean Δpos = 0.000000).
 2. **OMP numerically faithful**: OMP on/off give bit-identical trajectories.

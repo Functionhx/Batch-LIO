@@ -9,6 +9,7 @@
 	<arg name="batch_dt"     default="0.001" />
 	<arg name="batch_omp"    default="0" />
 	<arg name="batch_deskew" default="1" />
+	<arg name="pub_hifreq"   default="0" />   <!-- 1 => publish odom per batch window (~1/batch_dt Hz) -->
 
 	<node pkg="batch_lio" type="batchlio_mapping" name="laserMapping" output="screen" >
 	<rosparam command="load" file="$(find batch_lio)/config/avia.yaml" />
@@ -25,5 +26,6 @@
 	<param name="batch_dt"     type="double" value="$(arg batch_dt)" />
 	<param name="batch_omp"    type="bool"   value="$(arg batch_omp)" />
 	<param name="batch_deskew" type="bool"   value="$(arg batch_deskew)" />
+	<param name="odometry/publish_odometry_without_downsample" type="bool" value="$(arg pub_hifreq)" />
 	</node>
 </launch>
