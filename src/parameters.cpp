@@ -41,6 +41,7 @@ double online_refine_time = 20.0; //unit: s
 bool cut_frame_init = false; // true;
 bool   batch_omp = false;     // batch-LIO: OpenMP on per-point KNN+plane-fit loop
 double batch_dt  = 0.001;     // batch-LIO: batch window length [s]; <=0 => point-wise (~Point-LIO)
+bool   batch_deskew = true;   // batch-LIO: intra-window de-skew on/off (ablation toggle)
 
 MeasureGroup Measures;
 
@@ -57,6 +58,7 @@ void readParameters(ros::NodeHandle &nh)
   nh.param<bool>("space_down_sample", space_down_sample, 1);
   nh.param<bool>("batch_omp", batch_omp, false);
   nh.param<double>("batch_dt", batch_dt, 0.001);
+  nh.param<bool>("batch_deskew", batch_deskew, true);
   nh.param<double>("mapping/satu_acc",satu_acc,3.0);
   nh.param<double>("mapping/satu_gyro",satu_gyro,35.0);
   nh.param<double>("mapping/acc_norm",acc_norm,1.0);

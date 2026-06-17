@@ -12,6 +12,7 @@
 #include "li_initialization.h"
 #include <malloc.h>
 #include <omp.h>
+#include "deskew.h"
 // #include <cv_bridge/cv_bridge.h>
 // #include "matplotlibcpp.h"
 // #include <ros/console.h>
@@ -700,6 +701,30 @@ int main(int argc, char** argv)
                     propag_time += omp_get_wtime() - propag_state_start;
                     time_predict_last_const = time_current;
                     double t_update_start = omp_get_wtime();
+
+                    // batch-LIO: de-skew every point in this 1ms window to the window reference
+                    // time (its last point == time_current, to which the state was just propagated)
+                    // using the state's body angular velocity and world linear velocity
+                    // (eq 3.44-3.47). Refresh the three buffers h_model_output reads: the body
+                    // point (-> world transform / KNN), pbody_list and crossmat_list (-> Jacobian).
+                    // Skipped when batch_dt<=0 (point-wise mode stays bit-identical to Point-LIO).
+                    if (batch_dt > 0.0 && batch_deskew && time_seq[k] > 1)
+                    {
+                        const double t_last_ms = feats_down_body->points[idx + time_seq[k]].curvature;
+                        const V3D omg_b = kf_output.x_.omg;   // I_omega (body frame)
+                        const V3D vel_w = kf_output.x_.vel;   // G_v (world frame)
+                        const Eigen::Matrix3d R_I = kf_output.x_.rot;  // G_R_I at time_current
+                        for (int jj = 1; jj <= time_seq[k]; jj++)
+                        {
+                            PointType &pb = feats_down_body->points[idx + jj];
+                            const double dt_j = (pb.curvature - t_last_ms) / 1000.0;  // seconds, <= 0
+                            V3D pd = deskew_point(V3D(pb.x, pb.y, pb.z), dt_j, omg_b, vel_w, R_I);
+                            pb.x = pd(0); pb.y = pd(1); pb.z = pd(2);
+                            pbody_list[idx + jj] = pd;
+                            M3D pc; pc << SKEW_SYM_MATRX(pd);
+                            crossmat_list[idx + jj] = pc;
+                        }
+                    }
 
                     if (feats_down_size < 1)
                     {

@@ -65,6 +65,7 @@ extern shared_ptr<ImuProcess> p_imu;
 extern bool is_first_frame;
 extern bool   batch_omp;      // batch-LIO: OpenMP on per-point KNN+plane-fit loop
 extern double batch_dt;       // batch-LIO: batch time-window length [s]; <=0 => point-wise
+extern bool   batch_deskew;   // batch-LIO: intra-window de-skew on/off (ablation toggle)
 
 extern std::vector<double> extrinT;
 extern std::vector<double> extrinR;
