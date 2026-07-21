@@ -4,7 +4,7 @@
 
 This repo reproduces **innovation #1** of the undergraduate thesis *《高带宽轮式激光惯性里程计》(Point-LIWO — Batch-based Direct Point LiDAR-IMU-Wheeled-speed Odometry)*, USTC, by 张昊鹏. It is built directly on HKU-MARS **Point-LIO** and kept A/B-comparable with it (CPU-only; wheel-speed / innovation #2 is out of scope).
 
-> Status: reproduction + evaluation complete and validated. Tested with `osrf/ros:noetic-desktop-full` on x86_64.
+> Status: reproduction + evaluation complete and validated. Tested with `osrf/ros:noetic-desktop-full` on x86_64 (ROS1) and **natively on ROS2 Humble** (`ros2-humble` branch).
 
 ---
 
@@ -60,6 +60,55 @@ This probe also resolved an ambiguity in the thesis: the correct same-frame tran
 | Point-LIO frame-rate odom | ~10 Hz |
 | **batch-LIO 1 ms (publish per window)** | **~913 Hz** |
 | Point-LIO point-wise (publish per point) | ~6.7 kHz (per-point, noisy) |
+
+---
+
+## Build & Run (ROS2 Humble, native)
+
+A ROS2 Humble port lives on the **`ros2-humble`** branch (`main` stays the pristine ROS1
+Noetic A/B baseline). It is a thin faithful port — same algorithm, same params — verified
+end-to-end on converted Livox Avia bags (`colcon test` green: deskew gtest + smoke launch_test).
+
+### 1. Workspace + build
+
+```bash
+# livox_ros_driver2 (vendored SDK2) as a sibling package; batch_lio symlinked from this repo
+mkdir -p ~/batch_lio_ws/src
+ln -sfn /path/to/livox_ros_driver2  ~/batch_lio_ws/src/livox_ros_driver2
+ln -sfn /home/as/vllm/Batch-LIO     ~/batch_lio_ws/src/batch_lio
+source /opt/ros/humble/setup.bash
+cd ~/batch_lio_ws && colcon build --symlink-install
+```
+
+### 2. Convert a ROS1 Avia bag to ROS2 (mcap)
+
+```bash
+python3 -m pip install --user rosbags pyyaml
+python3 scripts/convert_bag.py  your_avia.bag  ~/batch_lio_ws/bags/your_avia
+# renames livox_ros_driver/CustomMsg -> livox_ros_driver2/msg/CustomMsg (byte-identical wire format)
+```
+
+### 3. Run
+
+```bash
+source ~/batch_lio_ws/install/setup.bash
+ros2 launch batch_lio mapping_avia.launch.py            # rviz2 on; or rviz:=false for headless
+ros2 bag play ~/batch_lio_ws/bags/your_avia             # in another shell
+ros2 topic echo /aft_mapped_to_init                     # odometry
+```
+
+### 4. Test + A/B
+
+```bash
+colcon test --packages-select batch_lio                 # deskew gtest + smoke launch_test
+bash scripts/ablations.sh                               # speedup + deskew (point-wise vs 1ms batch)
+python3 scripts/compare_traj.py LABEL run/out/<run>/pos_log.txt run/out/<run>/node.log [baseline_pos_log]
+```
+
+Differences from the ROS1 build: ament_cmake (`colcon build`) instead of catkin, Python launch
+files, ROS2 params (config YAMLs wrapped in `/**: {ros__parameters:}`), `tf2_ros`, and the
+type-tolerant param loader (YAML int→double coercion). See
+[`docs/superpowers/specs/2026-07-22-ros2-humble-port-design.md`](docs/superpowers/specs/2026-07-22-ros2-humble-port-design.md).
 
 ---
 

@@ -1,25 +1,31 @@
 #!/bin/bash
-# batch-LIO ablations: output bandwidth, batch_dt sweep, aggressive bag.
-B=/root/batch-lio
-QS=$B/bags/2020-09-16-quick-shack.bag
-AGG=$B/bags/outdoor_run_100Hz_2020-12-27-17-12-19.bag
-RL=$B/run/run_lio.sh
-LB=$B/run/avia_batch.launch
-BL=$B/run/avia_baseline.launch
+# batch-LIO ROS2 ablations: output bandwidth, batch_dt sweep, aggressive-bag deskew.
+# Bags must be converted first (scripts/convert_bag.py) into ~/batch_lio_ws/bags/.
+# The in-ROS2 A/B compares batch_dt=0.0 (point-wise, == Point-LIO behavior) against
+# batch_dt>0 (batch). runtime_pos_log_enable:=true emits pos_log.txt + [ mapping ] timings
+# that scripts/compare_traj.py parses.
+PKG=/home/as/vllm/Batch-LIO
+CFG="$PKG/config/avia.yaml"
+RL="$PKG/scripts/run_lio.sh"
+OUT="$PKG/run/out"
+BAGS="${HOME}/batch_lio_ws/bags"
+QS="$BAGS/quick-shack"
+AGG="$BAGS/outdoor_run"
+RUNLOG="-p runtime_pos_log_enable:=true"
 
-echo "===== ROUND A: output bandwidth ====="
-# point-wise (batch_dt=0) publishing per group => Point-LIO native high rate (kHz, noisy)
-$RL $LB $QS $B/run/out/bw_pointwise_hifreq 1.0 $B/Batch-LIO "batch_dt:=0.0   pub_hifreq:=1 batch_omp:=1"
-# 1ms batch publishing per window => ~1000 Hz
-$RL $LB $QS $B/run/out/bw_1ms_hifreq       1.0 $B/Batch-LIO "batch_dt:=0.001 pub_hifreq:=1 batch_omp:=1"
+mkdir -p "$OUT"
 
-echo "===== ROUND B: batch_dt sweep (omp on, deskew on) ====="
+echo "===== ROUND A: per-frame cost (quick-shack) — point-wise vs 1ms batch ====="
+$RL "$CFG" "$QS" "$OUT/bw_pointwise" 1.0 "$PKG" "$RUNLOG -p batch_dt:=0.0 -p batch_omp:=true"
+$RL "$CFG" "$QS" "$OUT/bw_1ms"       1.0 "$PKG" "$RUNLOG -p batch_dt:=0.001 -p batch_omp:=true"
+
+echo "===== ROUND B: batch_dt sweep (quick-shack, omp on, deskew on) ====="
 for dt in 0.0005 0.001 0.002 0.005 0.01 0.02; do
-  $RL $LB $QS $B/run/out/sweep_${dt} 1.0 $B/Batch-LIO "batch_dt:=$dt batch_omp:=1 batch_deskew:=1"
+  $RL "$CFG" "$QS" "$OUT/sweep_${dt}" 1.0 "$PKG" "$RUNLOG -p batch_dt:=$dt -p batch_omp:=true -p batch_deskew:=true"
 done
 
-echo "===== ROUND C: aggressive bag (outdoor_run_100Hz, 63s) ====="
-$RL $BL $AGG $B/run/out/agg_baseline   1.0 $B/Point-LIO
-$RL $LB $AGG $B/run/out/agg_1ms_deskew 1.0 $B/Batch-LIO "batch_dt:=0.001 batch_omp:=1 batch_deskew:=1"
-$RL $LB $AGG $B/run/out/agg_1ms_noskew 1.0 $B/Batch-LIO "batch_dt:=0.001 batch_omp:=1 batch_deskew:=0"
+echo "===== ROUND C: aggressive-bag deskew (outdoor_run) ====="
+$RL "$CFG" "$AGG" "$OUT/agg_pointwise"   1.0 "$PKG" "$RUNLOG -p batch_dt:=0.0   -p batch_omp:=true"
+$RL "$CFG" "$AGG" "$OUT/agg_1ms_deskew"  1.0 "$PKG" "$RUNLOG -p batch_dt:=0.001 -p batch_omp:=true -p batch_deskew:=true"
+$RL "$CFG" "$AGG" "$OUT/agg_1ms_noskew"  1.0 "$PKG" "$RUNLOG -p batch_dt:=0.001 -p batch_omp:=true -p batch_deskew:=false"
 echo ABLATIONS_DONE

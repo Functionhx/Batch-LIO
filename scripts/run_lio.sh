@@ -1,50 +1,51 @@
 #!/bin/bash
-# Headless Point-LIO / batch-LIO run harness.
-# Usage: run_lio.sh <launch_abs_path> <bag_abs_path> <out_dir> [rate] [log_src_dir]
-#   launch_abs_path : absolute path to a .launch file
-#   bag_abs_path    : absolute path to a rosbag
-#   out_dir         : where to put node.log, play.log, odom.bag, pos_log.txt
-#   rate            : rosbag play rate (default 1.0)
-#   log_src_dir     : package dir whose Log/pos_log.txt to harvest (optional)
+# Headless batch-LIO ROS2 run harness (port of scripts/run_lio.sh).
+# Usage: run_lio.sh <config.yaml> <bag_dir> <out_dir> [rate] [pkg_src_dir] ["-p overrides..."]
+#   config.yaml   : absolute path to a ROS2 params-file (config/*.yaml)
+#   bag_dir       : directory of a converted ROS2 mcap bag
+#   out_dir       : where to put node.log, play.log, odom/, pos_log.txt
+#   rate          : ros2 bag play rate (default 1.0)
+#   pkg_src_dir   : package source dir whose Log/pos_log.txt to harvest (creates Log/)
+#   overrides     : extra "-p key:=value" params, e.g. "-p batch_dt:=0.001 -p batch_omp:=true"
+# Type-safe param sweeps use `ros2 run ... --ros-args --params-file <cfg> -p key:=val`
+# (the -p form infers types; declare_parameter in the node uses dynamic_typing + coercion).
 
-LAUNCH="$1"; BAG="$2"; OUTDIR="$3"; RATE="${4:-1.0}"; LOGSRC="$5"; LAUNCH_ARGS="$6"
+CFG="$1"; BAG="$2"; OUTDIR="$3"; RATE="${4:-1.0}"; LOGSRC="${5:-}"; PARAMS="${6:-}"
 mkdir -p "$OUTDIR"
 
-source /opt/ros/noetic/setup.bash
-source /root/batch-lio/catkin_ws/devel/setup.bash
+source /opt/ros/humble/setup.bash
+source "${HOME}/batch_lio_ws/install/setup.bash"
 
-# clean any leftovers
-pkill -f lio_mapping 2>/dev/null
-pkill -f rosmaster 2>/dev/null
-pkill -f roscore 2>/dev/null
+# ensure Log dir exists (the node writes Log/pos_log.txt under ROOT_DIR == pkg_src_dir)
+if [ -n "$LOGSRC" ]; then mkdir -p "$LOGSRC/Log"; fi
+
+# clean leftovers
+pkill -f batchlio_mapping 2>/dev/null || true
 sleep 1
 
-roscore > "$OUTDIR/roscore.log" 2>&1 &
-until rostopic list >/dev/null 2>&1; do sleep 0.3; done
-
-# start node
-roslaunch "$LAUNCH" $LAUNCH_ARGS > "$OUTDIR/node.log" 2>&1 &
-# wait for node registration (max ~20s)
-for i in $(seq 1 60); do rosnode list 2>/dev/null | grep -q laserMapping && break; sleep 0.3; done
+# start node (config from file, batch params overridden via -p for type-safe sweeps)
+# shellcheck disable=SC2086
+ros2 run batch_lio batchlio_mapping --ros-args --params-file "$CFG" $PARAMS \
+    > "$OUTDIR/node.log" 2>&1 &
+NODE_PID=$!
+for _ in $(seq 1 60); do ros2 node list 2>/dev/null | grep -q '/laserMapping' && break; sleep 0.3; done
 sleep 1
 
 # record odometry output
-rosbag record -O "$OUTDIR/odom.bag" /aft_mapped_to_init __name:=odomrec > "$OUTDIR/record.log" 2>&1 &
+ros2 bag record -o "$OUTDIR/odom" /aft_mapped_to_init > "$OUTDIR/record.log" 2>&1 &
+REC_PID=$!
 sleep 1
 
 # play the bag (foreground; waits until finished)
-echo "[run_lio] playing $BAG at rate $RATE"
-rosbag play -r "$RATE" "$BAG" > "$OUTDIR/play.log" 2>&1
+echo "[run_lio] playing $BAG at rate $RATE (params: $PARAMS)"
+ros2 bag play -r "$RATE" "$BAG" > "$OUTDIR/play.log" 2>&1
 
 # drain + clean shutdown
 sleep 3
-rosnode kill /odomrec 2>/dev/null
-sleep 2
-rosnode kill /laserMapping 2>/dev/null
-sleep 2
-pkill -f lio_mapping 2>/dev/null
-pkill -f rosmaster 2>/dev/null
-pkill -f roscore 2>/dev/null
+kill "$REC_PID" 2>/dev/null || true
+sleep 1
+kill "$NODE_PID" 2>/dev/null || true
+pkill -f batchlio_mapping 2>/dev/null || true
 sleep 1
 
 # harvest runtime log

@@ -1,3 +1,6 @@
 Log/*.txt
 Log/*.pcd
 *.pcd
+run/
+Log/
+PCD/
