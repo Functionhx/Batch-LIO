@@ -5,15 +5,24 @@
 #include <Eigen/Eigen>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-#include <sensor_msgs/Imu.h>
-#include <nav_msgs/Odometry.h>
-#include <tf/transform_broadcaster.h>
-#include <eigen_conversions/eigen_msg.h>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <../include/IKFoM/IKFoM_toolkit/esekfom/esekfom.hpp>
 #include <queue>
 
 using namespace std;
 using namespace Eigen;
+
+// ---- ROS2 time helpers (replace ros::Time().fromSec / .toSec) ----
+inline double stamp_to_sec(const builtin_interfaces::msg::Time &stamp)
+{
+    return rclcpp::Time(stamp).seconds();
+}
+inline builtin_interfaces::msg::Time stamp_from_sec(double sec)
+{
+    return rclcpp::Time(static_cast<int64_t>(sec * 1e9));
+}
 
 
 typedef MTK::vect<3, double> vect3;
@@ -121,7 +130,7 @@ struct MeasureGroup     // Lidar data and imu dates for the curent process
     double lidar_beg_time;
     double lidar_last_time;
     PointCloudXYZI::Ptr lidar;
-    deque<sensor_msgs::Imu::ConstPtr> imu;
+    deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu;
 };
 
 template <typename T>

@@ -1,5 +1,19 @@
 #include "parameters.h"
 
+namespace {
+// declare (with default) then get; ROS2 param names use '.' as the hierarchy separator.
+// The has_parameter guard makes this idempotent so duplicate loads (e.g. lidar_meas_cov
+// appears twice in the ROS1 loader) do not throw ParameterAlreadyDeclaredException.
+template <typename T>
+void get_param(rclcpp::Node::SharedPtr n, const std::string &name, T &var, const T &default_val)
+{
+    if (!n->has_parameter(name)) {
+        n->declare_parameter<T>(name, default_val);
+    }
+    var = n->get_parameter(name).get_value<T>();
+}
+}  // namespace
+
 bool is_first_frame = true;
 double lidar_end_time = 0.0, first_lidar_time = 0.0, time_con = 0.0;
 double last_timestamp_lidar = -1.0, last_timestamp_imu = -1.0;
@@ -47,71 +61,69 @@ MeasureGroup Measures;
 
 ofstream fout_out, fout_imu_pbp;
 
-void readParameters(ros::NodeHandle &nh)
+void readParameters(rclcpp::Node::SharedPtr nh)
 {
   p_pre.reset(new Preprocess());
   p_imu.reset(new ImuProcess());
-  nh.param<bool>("prop_at_freq_of_imu", prop_at_freq_of_imu, 1);
-  nh.param<bool>("use_imu_as_input", use_imu_as_input, 0);
-  nh.param<bool>("check_satu", check_satu, 1);
-  nh.param<int>("init_map_size", init_map_size, 100);
-  nh.param<bool>("space_down_sample", space_down_sample, 1);
-  nh.param<bool>("batch_omp", batch_omp, false);
-  nh.param<double>("batch_dt", batch_dt, 0.001);
-  nh.param<bool>("batch_deskew", batch_deskew, true);
-  nh.param<double>("mapping/satu_acc",satu_acc,3.0);
-  nh.param<double>("mapping/satu_gyro",satu_gyro,35.0);
-  nh.param<double>("mapping/acc_norm",acc_norm,1.0);
-  nh.param<float>("mapping/plane_thr", plane_thr, 0.05f);
-  nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
-  nh.param<std::string>("common/lid_topic",lid_topic,"/livox/lidar");
-  nh.param<std::string>("common/imu_topic", imu_topic,"/livox/imu");
-  nh.param<bool>("common/con_frame",con_frame,false);
-  nh.param<int>("common/con_frame_num",con_frame_num,1);
-  nh.param<bool>("common/cut_frame",cut_frame,false);
-  nh.param<double>("common/cut_frame_time_interval",cut_frame_time_interval,0.1);
-  nh.param<double>("common/time_diff_lidar_to_imu",time_diff_lidar_to_imu,0.0);
-  nh.param<double>("filter_size_surf",filter_size_surf_min,0.5);
-  nh.param<double>("filter_size_map",filter_size_map_min,0.5);
-  // nh.param<double>("cube_side_length",cube_len,2000);
-  nh.param<float>("mapping/det_range",DET_RANGE,300.f);
-  nh.param<double>("mapping/fov_degree",fov_deg,180);
-  nh.param<bool>("mapping/imu_en",imu_en,true);
-  nh.param<bool>("mapping/extrinsic_est_en",extrinsic_est_en,true);
-  nh.param<double>("mapping/imu_time_inte",imu_time_inte,0.005);
-  nh.param<double>("mapping/lidar_meas_cov",laser_point_cov,0.1);
-  nh.param<double>("mapping/acc_cov_input",acc_cov_input,0.1);
-  nh.param<double>("mapping/vel_cov",vel_cov,20);
-  nh.param<double>("mapping/gyr_cov_input",gyr_cov_input,0.1);
-  nh.param<double>("mapping/gyr_cov_output",gyr_cov_output,0.1);
-  nh.param<double>("mapping/acc_cov_output",acc_cov_output,0.1);
-  nh.param<double>("mapping/b_gyr_cov",b_gyr_cov,0.0001);
-  nh.param<double>("mapping/b_acc_cov",b_acc_cov,0.0001);
-  nh.param<double>("mapping/imu_meas_acc_cov",imu_meas_acc_cov,0.1);
-  nh.param<double>("mapping/imu_meas_omg_cov",imu_meas_omg_cov,0.1);
-  nh.param<double>("preprocess/blind", p_pre->blind, 1.0);
-  nh.param<int>("preprocess/lidar_type", lidar_type, 1);
-  nh.param<int>("preprocess/scan_line", p_pre->N_SCANS, 16);
-  nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
-  nh.param<int>("preprocess/timestamp_unit", p_pre->time_unit, 1);
-  nh.param<double>("mapping/match_s", match_s, 81);
-  nh.param<std::vector<double>>("mapping/gravity", gravity, std::vector<double>());
-  nh.param<std::vector<double>>("mapping/gravity_init", gravity_init, std::vector<double>());
-  nh.param<std::vector<double>>("mapping/extrinsic_T", extrinT, std::vector<double>());
-  nh.param<std::vector<double>>("mapping/extrinsic_R", extrinR, std::vector<double>());
-  nh.param<bool>("odometry/publish_odometry_without_downsample", publish_odometry_without_downsample, false);
-  nh.param<bool>("publish/path_en",path_en, true);
-  nh.param<bool>("publish/scan_publish_en",scan_pub_en,1);
-  nh.param<bool>("publish/scan_bodyframe_pub_en",scan_body_pub_en,1);
-  nh.param<bool>("runtime_pos_log_enable", runtime_pos_log, 0);
-  nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
-  nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
+  get_param<bool>(nh, "prop_at_freq_of_imu", prop_at_freq_of_imu, true);
+  get_param<bool>(nh, "use_imu_as_input", use_imu_as_input, false);
+  get_param<bool>(nh, "check_satu", check_satu, true);
+  get_param<int>(nh, "init_map_size", init_map_size, 100);
+  get_param<bool>(nh, "space_down_sample", space_down_sample, true);
+  get_param<bool>(nh, "batch_omp", batch_omp, false);
+  get_param<double>(nh, "batch_dt", batch_dt, 0.001);
+  get_param<bool>(nh, "batch_deskew", batch_deskew, true);
+  get_param<double>(nh, "mapping.satu_acc", satu_acc, 3.0);
+  get_param<double>(nh, "mapping.satu_gyro", satu_gyro, 35.0);
+  get_param<double>(nh, "mapping.acc_norm", acc_norm, 1.0);
+  get_param<float>(nh, "mapping.plane_thr", plane_thr, 0.05f);
+  get_param<int>(nh, "point_filter_num", p_pre->point_filter_num, 2);
+  get_param<std::string>(nh, "common.lid_topic", lid_topic, "/livox/lidar");
+  get_param<std::string>(nh, "common.imu_topic", imu_topic, "/livox/imu");
+  get_param<bool>(nh, "common.con_frame", con_frame, false);
+  get_param<int>(nh, "common.con_frame_num", con_frame_num, 1);
+  get_param<bool>(nh, "common.cut_frame", cut_frame, false);
+  get_param<double>(nh, "common.cut_frame_time_interval", cut_frame_time_interval, 0.1);
+  get_param<double>(nh, "common.time_diff_lidar_to_imu", time_diff_lidar_to_imu, 0.0);
+  get_param<double>(nh, "filter_size_surf", filter_size_surf_min, 0.5);
+  get_param<double>(nh, "filter_size_map", filter_size_map_min, 0.5);
+  get_param<float>(nh, "mapping.det_range", DET_RANGE, 300.f);
+  get_param<double>(nh, "mapping.fov_degree", fov_deg, 180);
+  get_param<bool>(nh, "mapping.imu_en", imu_en, true);
+  get_param<bool>(nh, "mapping.extrinsic_est_en", extrinsic_est_en, true);
+  get_param<double>(nh, "mapping.imu_time_inte", imu_time_inte, 0.005);
+  get_param<double>(nh, "mapping.lidar_meas_cov", laser_point_cov, 0.1);
+  get_param<double>(nh, "mapping.acc_cov_input", acc_cov_input, 0.1);
+  get_param<double>(nh, "mapping.vel_cov", vel_cov, 20);
+  get_param<double>(nh, "mapping.gyr_cov_input", gyr_cov_input, 0.1);
+  get_param<double>(nh, "mapping.gyr_cov_output", gyr_cov_output, 0.1);
+  get_param<double>(nh, "mapping.acc_cov_output", acc_cov_output, 0.1);
+  get_param<double>(nh, "mapping.b_gyr_cov", b_gyr_cov, 0.0001);
+  get_param<double>(nh, "mapping.b_acc_cov", b_acc_cov, 0.0001);
+  get_param<double>(nh, "mapping.imu_meas_acc_cov", imu_meas_acc_cov, 0.1);
+  get_param<double>(nh, "mapping.imu_meas_omg_cov", imu_meas_omg_cov, 0.1);
+  get_param<double>(nh, "preprocess.blind", p_pre->blind, 1.0);
+  get_param<int>(nh, "preprocess.lidar_type", lidar_type, 1);
+  get_param<int>(nh, "preprocess.scan_line", p_pre->N_SCANS, 16);
+  get_param<int>(nh, "preprocess.scan_rate", p_pre->SCAN_RATE, 10);
+  get_param<int>(nh, "preprocess.timestamp_unit", p_pre->time_unit, 1);
+  get_param<double>(nh, "mapping.match_s", match_s, 81);
+  get_param<std::vector<double>>(nh, "mapping.gravity", gravity, std::vector<double>());
+  get_param<std::vector<double>>(nh, "mapping.gravity_init", gravity_init, std::vector<double>());
+  get_param<std::vector<double>>(nh, "mapping.extrinsic_T", extrinT, std::vector<double>());
+  get_param<std::vector<double>>(nh, "mapping.extrinsic_R", extrinR, std::vector<double>());
+  get_param<bool>(nh, "odometry.publish_odometry_without_downsample", publish_odometry_without_downsample, false);
+  get_param<bool>(nh, "publish.path_en", path_en, true);
+  get_param<bool>(nh, "publish.scan_publish_en", scan_pub_en, true);
+  get_param<bool>(nh, "publish.scan_bodyframe_pub_en", scan_body_pub_en, true);
+  get_param<bool>(nh, "runtime_pos_log_enable", runtime_pos_log, false);
+  get_param<bool>(nh, "pcd_save.pcd_save_en", pcd_save_en, false);
+  get_param<int>(nh, "pcd_save.interval", pcd_save_interval, -1);
 
-  nh.param<double>("mapping/lidar_time_inte",lidar_time_inte,0.1);
-  nh.param<double>("mapping/lidar_meas_cov",laser_point_cov,0.1);
+  get_param<double>(nh, "mapping.lidar_time_inte", lidar_time_inte, 0.1);
 
-  nh.param<float>("mapping/ivox_grid_resolution", ivox_options_.resolution_, 0.2);
-  nh.param<int>("ivox_nearby_type", ivox_nearby_type, 18);
+  get_param<float>(nh, "mapping.ivox_grid_resolution", ivox_options_.resolution_, 0.2);
+  get_param<int>(nh, "ivox_nearby_type", ivox_nearby_type, 18);
   if (ivox_nearby_type == 0) {
     ivox_options_.nearby_type_ = IVoxType::NearbyType::CENTER;
   } else if (ivox_nearby_type == 6) {

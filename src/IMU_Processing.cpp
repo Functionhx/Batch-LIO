@@ -27,7 +27,7 @@ ImuProcess::~ImuProcess() {}
 
 void ImuProcess::Reset() 
 {
-  ROS_WARN("Reset ImuProcess");
+  RCLCPP_WARN(rclcpp::get_logger("batch_lio"), "Reset ImuProcess");
   mean_acc      = V3D(0, 0, 0.0);
   mean_gyr      = V3D(0, 0, 0);
   imu_need_init_    = true;
@@ -71,7 +71,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, int &N)
 {
   /** 1. initializing the gravity, gyro bias, acc and gyro covariance
    ** 2. normalize the acceleration measurenments to unit gravity **/
-  ROS_INFO("IMU Initializing: %.1f %%", double(N) / MAX_INI_COUNT * 100);
+  RCLCPP_INFO(rclcpp::get_logger("batch_lio"), "IMU Initializing: %.1f %%", double(N) / MAX_INI_COUNT * 100);
   V3D cur_acc, cur_gyr;
   
   if (b_first_frame_)
@@ -116,7 +116,7 @@ void ImuProcess::Process(const MeasureGroup &meas, PointCloudXYZI::Ptr cur_pcl_u
 
         if (init_iter_num > MAX_INI_COUNT)
         {
-          ROS_INFO("IMU Initializing: %.1f %%", 100.0);
+          RCLCPP_INFO(rclcpp::get_logger("batch_lio"), "IMU Initializing: %.1f %%", 100.0);
           imu_need_init_ = false;
           *cur_pcl_un_ = *(meas.lidar);
         }
