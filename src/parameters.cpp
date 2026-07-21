@@ -1,16 +1,57 @@
 #include "parameters.h"
 
 namespace {
-// declare (with default) then get; ROS2 param names use '.' as the hierarchy separator.
-// The has_parameter guard makes this idempotent so duplicate loads (e.g. lidar_meas_cov
-// appears twice in the ROS1 loader) do not throw ParameterAlreadyDeclaredException.
+// Declare with dynamic_typing so a YAML int value for a double param (or an int array for a
+// double array, e.g. extrinsic_R: [1,0,0,...]) does NOT throw InvalidParameterTypeException;
+// then coerce the stored value into the C++ type. The has_parameter guard makes loads
+// idempotent (lidar_meas_cov is loaded twice in the upstream loader).
+inline void declare_dyn(rclcpp::Node::SharedPtr n, const std::string &name,
+                        const rclcpp::ParameterValue &default_val)
+{
+    if (!n->has_parameter(name)) {
+        rcl_interfaces::msg::ParameterDescriptor desc;
+        desc.dynamic_typing = true;
+        n->declare_parameter(name, default_val, desc);
+    }
+}
+inline void fetch(rclcpp::Node::SharedPtr n, const std::string &name, double &var)
+{
+    rclcpp::Parameter p = n->get_parameter(name);
+    var = (p.get_type() == rclcpp::ParameterType::PARAMETER_INTEGER) ? (double)p.as_int() : p.as_double();
+}
+inline void fetch(rclcpp::Node::SharedPtr n, const std::string &name, float &var)
+{
+    double v; fetch(n, name, v); var = static_cast<float>(v);
+}
+inline void fetch(rclcpp::Node::SharedPtr n, const std::string &name, bool &var)
+{
+    var = n->get_parameter(name).as_bool();
+}
+inline void fetch(rclcpp::Node::SharedPtr n, const std::string &name, int &var)
+{
+    rclcpp::Parameter p = n->get_parameter(name);
+    var = (p.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE) ? (int)p.as_double() : (int)p.as_int();
+}
+inline void fetch(rclcpp::Node::SharedPtr n, const std::string &name, std::string &var)
+{
+    var = n->get_parameter(name).as_string();
+}
+inline void fetch(rclcpp::Node::SharedPtr n, const std::string &name, std::vector<double> &var)
+{
+    rclcpp::Parameter p = n->get_parameter(name);
+    if (p.get_type() == rclcpp::ParameterType::PARAMETER_INTEGER_ARRAY) {
+        auto a = p.as_integer_array();
+        var.assign(a.begin(), a.end());
+    } else {
+        auto a = p.as_double_array();
+        var.assign(a.begin(), a.end());
+    }
+}
 template <typename T>
 void get_param(rclcpp::Node::SharedPtr n, const std::string &name, T &var, const T &default_val)
 {
-    if (!n->has_parameter(name)) {
-        n->declare_parameter<T>(name, default_val);
-    }
-    var = n->get_parameter(name).get_value<T>();
+    declare_dyn(n, name, rclcpp::ParameterValue(default_val));
+    fetch(n, name, var);
 }
 }  // namespace
 
