@@ -4,3 +4,5 @@ Log/*.pcd
 run/
 Log/
 PCD/
+__pycache__/
+*.pyc
