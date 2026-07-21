@@ -80,6 +80,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_deskew test/test_deskew.cpp)
   target_include_directories(test_deskew PRIVATE ${EIGEN3_INCLUDE_DIR} src)
   target_link_libraries(test_deskew Eigen3::Eigen)
+
+  find_package(launch_testing_ament_cmake REQUIRED)
+  add_launch_test(test/test_smoke.py TIMEOUT 180)
 endif()
 
 ament_package()
