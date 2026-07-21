@@ -74,6 +74,12 @@ install(TARGETS batchlio_mapping
 install(DIRECTORY launch config rviz_cfg
   DESTINATION share/${PROJECT_NAME})
 
-# ---- tests (added incrementally: gtest in Plan T10, launch_test in Plan T13) ----
+# ---- tests (gtest added here; launch_test added in Plan T13) ----
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_deskew test/test_deskew.cpp)
+  target_include_directories(test_deskew PRIVATE ${EIGEN3_INCLUDE_DIR} src)
+  target_link_libraries(test_deskew Eigen3::Eigen)
+endif()
 
 ament_package()
