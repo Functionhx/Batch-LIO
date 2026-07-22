@@ -60,16 +60,15 @@ def last_timing(node_log):
 
 
 def diff_vs_base(rows, base_rows):
-    """Per-frame |Δpos| mean/max, aligned by index (same bag => same frames)."""
-    n = min(len(rows), len(base_rows))
-    if n == 0:
+    """Per-frame |Δpos|, aligned by the bag timestamp rather than row index."""
+    base_by_time = {round(t, 6): pos for t, pos in base_rows}
+    deltas = [math.dist(pos, base_by_time[round(t, 6)])
+              for t, pos in rows if round(t, 6) in base_by_time]
+    if not deltas:
         return None
-    s = mx = 0.0
-    for i in range(n):
-        d = math.dist(rows[i][1], base_rows[i][1])
-        s += d
-        mx = max(mx, d)
-    return s / n, mx, n
+    ordered = sorted(deltas)
+    p95 = ordered[int(0.95 * (len(ordered) - 1))]
+    return sum(deltas) / len(deltas), p95, max(deltas), len(deltas)
 
 
 def main():
@@ -95,7 +94,9 @@ def main():
     if base:
         d = diff_vs_base(rows, read_pos(base))
         if d:
-            print(f"  vs baseline       : mean|Δpos|={d[0]:.4f} m  max|Δpos|={d[1]:.4f} m  (n={d[2]})")
+            print(f"  vs baseline       : mean|Δpos|={d[0]:.4f} m  "
+                  f"p95={d[1]:.4f} m  max={d[2]:.4f} m  "
+                  f"(matched timestamps={d[3]})")
     print()
 
 

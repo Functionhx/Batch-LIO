@@ -5,6 +5,7 @@
 #include "ivox/representative_ivox.h"
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <sstream>
 
@@ -52,6 +53,8 @@ std::uint64_t cuda_gpu_query_batches = 0;
 std::uint64_t cuda_gpu_query_points = 0;
 std::uint64_t cuda_cpu_query_batches = 0;
 std::uint64_t cuda_cpu_query_points = 0;
+std::atomic<std::uint64_t> preexpanded_verified_queries{0};
+std::atomic<std::uint64_t> preexpanded_query_mismatches{0};
 
 batchlio::RepresentativeNearbyType ParseNearbyType(int value)
 {
@@ -77,6 +80,7 @@ batchlio::RepresentativeIvoxConfig MakeRepresentativeConfig()
 	config.nearby_type = ParseNearbyType(representative_nearby_type);
 	config.capacity = static_cast<std::size_t>(representative_map_capacity);
 	config.max_range = static_cast<float>(representative_max_range);
+	config.preexpand_neighborhoods = representative_preexpand_neighborhoods;
 	batchlio::RepresentativeIvox::ValidateConfig(config);
 	return config;
 }
@@ -97,8 +101,37 @@ void NeighborSetToPointVector(const batchlio::NeighborSet& source, PointVector& 
 
 void QueryRepresentativeCpu(const PointType& query, PointVector& neighbors)
 {
-	const batchlio::NeighborSet result = representative_cpu_map->Query(
-		batchlio::Point3f{query.x, query.y, query.z});
+	const batchlio::Point3f input{query.x, query.y, query.z};
+	batchlio::NeighborSet result = representative_cpu_map->Query(input);
+	if (representative_verify_preexpanded &&
+		representative_cpu_map->config().preexpand_neighborhoods)
+	{
+		const batchlio::NeighborSet direct = representative_cpu_map->QueryDirect(input);
+		bool equal = result.count == direct.count;
+		for (int i = 0; equal && i < result.count; ++i)
+		{
+			equal = result.points[i].x == direct.points[i].x &&
+				result.points[i].y == direct.points[i].y &&
+				result.points[i].z == direct.points[i].z &&
+				result.squared_distances[i] == direct.squared_distances[i];
+		}
+		preexpanded_verified_queries.fetch_add(1U, std::memory_order_relaxed);
+		if (!equal)
+		{
+			const std::uint64_t mismatch =
+				preexpanded_query_mismatches.fetch_add(1U, std::memory_order_relaxed) + 1U;
+			if (mismatch <= 5U)
+			{
+				#pragma omp critical(batch_lio_preexpanded_verify_log)
+				std::cerr << "[batch-LIO PREEXPAND VERIFY] mismatch=" << mismatch
+						  << " cached_count=" << result.count
+						  << " direct_count=" << direct.count << std::endl;
+			}
+			// Verification mode prioritizes estimator safety while preserving a
+			// visible mismatch counter for diagnosis.
+			result = direct;
+		}
+	}
 	NeighborSetToPointVector(result, neighbors);
 }
 
@@ -215,6 +248,8 @@ bool InitializeMeasurementMapBackend()
 	cuda_gpu_query_points = 0;
 	cuda_cpu_query_batches = 0;
 	cuda_cpu_query_points = 0;
+	preexpanded_verified_queries.store(0U, std::memory_order_relaxed);
+	preexpanded_query_mismatches.store(0U, std::memory_order_relaxed);
 	active_map_backend = ActiveMapBackend::ORIGINAL_CPU;
 	map_backend_status = "original_cpu";
 
@@ -290,6 +325,8 @@ void ResetMeasurementMapBackend()
 	cuda_gpu_query_points = 0;
 	cuda_cpu_query_batches = 0;
 	cuda_cpu_query_points = 0;
+	preexpanded_verified_queries.store(0U, std::memory_order_relaxed);
+	preexpanded_query_mismatches.store(0U, std::memory_order_relaxed);
 }
 
 void AddPointsToMapBackends(const PointVector& points)
@@ -332,7 +369,13 @@ std::string MeasurementMapBackendDescription()
 		description << " resolution=" << representative_map_resolution
 					<< " K=" << representative_max_points_per_voxel
 					<< " nearby=" << representative_nearby_type
-					<< " capacity=" << representative_map_capacity;
+					<< " capacity=" << representative_map_capacity
+					<< " preexpanded="
+					<< (representative_preexpand_neighborhoods ? "true" : "false");
+		if (representative_verify_preexpanded)
+		{
+			description << " verify_preexpanded=true";
+		}
 	}
 	if (active_map_backend == ActiveMapBackend::REPRESENTATIVE_CUDA)
 	{
@@ -355,6 +398,24 @@ std::string MeasurementMapBackendRuntimeStats()
 				<< " gpu_query_points=" << cuda_gpu_query_points
 				<< " cpu_query_batches=" << cuda_cpu_query_batches
 				<< " cpu_query_points=" << cuda_cpu_query_points;
+	if (representative_cpu_map != nullptr)
+	{
+		description << " cpu_voxels=" << representative_cpu_map->NumVoxels()
+					<< " cached_query_voxels="
+					<< representative_cpu_map->NumCachedQueryVoxels()
+					<< " cached_voxel_refs="
+					<< representative_cpu_map->CachedVoxelReferences()
+					<< " cache_payload_mib="
+					<< (representative_cpu_map->EstimatedNeighborhoodCachePayloadBytes() /
+						(1024.0 * 1024.0));
+	}
+	if (representative_verify_preexpanded)
+	{
+		description << " preexpanded_verified_queries="
+					<< preexpanded_verified_queries.load(std::memory_order_relaxed)
+					<< " preexpanded_mismatches="
+					<< preexpanded_query_mismatches.load(std::memory_order_relaxed);
+	}
 	if (representative_cuda_map != nullptr)
 	{
 		const batchlio::CudaRepresentativeIvoxStats stats = representative_cuda_map->Stats();

@@ -43,6 +43,12 @@ struct RepresentativeIvoxConfig {
     RepresentativeNearbyType nearby_type = RepresentativeNearbyType::NEARBY18;
     std::size_t capacity = 262144;
     float max_range = 5.0f;
+    // FR-LIO/RC-Vox-inspired CPU optimization. Occupied query voxels keep their
+    // visible home-voxel pointers, replacing up to 27 hash probes with one hash
+    // probe plus pointer traversal. Queries in empty voxels use the direct path.
+    // The pointed-to representative vectors remain authoritative, so enabling
+    // this cache does not change the retained points or KNN result.
+    bool preexpand_neighborhoods = false;
 };
 
 struct VoxelKey {
@@ -108,11 +114,24 @@ public:
         ValidateConfig(config_);
         inv_resolution_ = 1.0f / config_.resolution;
         voxels_.reserve(std::min<std::size_t>(config_.capacity, 65536));
+        if (config_.preexpand_neighborhoods) {
+            query_neighborhoods_.reserve(std::min<std::size_t>(config_.capacity, 65536));
+        }
     }
 
+    // Cached neighborhoods contain pointers into voxels_. The C++ standard
+    // keeps unordered_map element pointers valid across rehashes, but copying or
+    // moving this object would make the self-referential cache invalid.
+    RepresentativeIvox(const RepresentativeIvox&) = delete;
+    RepresentativeIvox& operator=(const RepresentativeIvox&) = delete;
+    RepresentativeIvox(RepresentativeIvox&&) = delete;
+    RepresentativeIvox& operator=(RepresentativeIvox&&) = delete;
+
     void Reset() {
+        query_neighborhoods_.clear();
         voxels_.clear();
         rejected_insertions_ = 0;
+        cached_voxel_references_ = 0;
     }
 
     bool AddPoint(const Point3f& point) {
@@ -127,6 +146,7 @@ public:
             return false;
         }
         auto iter = voxels_.find(key);
+        bool inserted_voxel = false;
         if (iter == voxels_.end()) {
             if (voxels_.size() >= config_.capacity) {
                 ++rejected_insertions_;
@@ -135,6 +155,7 @@ public:
             Voxel voxel;
             voxel.points.reserve(static_cast<std::size_t>(config_.max_points_per_voxel));
             iter = voxels_.emplace(key, std::move(voxel)).first;
+            inserted_voxel = true;
         }
 
         auto& points = iter->second.points;
@@ -149,9 +170,14 @@ public:
         if (points.size() > static_cast<std::size_t>(config_.max_points_per_voxel)) {
             points.resize(static_cast<std::size_t>(config_.max_points_per_voxel));
         }
-        return std::find_if(points.begin(), points.end(), [&](const Point3f& existing) {
-                   return SamePoint(existing, point);
-               }) != points.end();
+        const bool retained =
+            std::find_if(points.begin(), points.end(), [&](const Point3f& existing) {
+                return SamePoint(existing, point);
+            }) != points.end();
+        if (inserted_voxel && retained) {
+            RegisterVoxelWithQueryNeighborhoods(key, &iter->second);
+        }
+        return retained;
     }
 
     std::size_t AddPoints(const Point3f* points, std::size_t count) {
@@ -166,43 +192,13 @@ public:
     }
 
     NeighborSet Query(const Point3f& query) const {
-        NeighborSet result;
-        if (!IsFinite(query)) {
-            return result;
-        }
+        return QueryImpl(query, config_.preexpand_neighborhoods);
+    }
 
-        VoxelKey center;
-        if (!PositionToKey(query, center)) {
-            return result;
-        }
-        const float max_squared_range = config_.max_range * config_.max_range;
-        VisitNeighborOffsets([&](int dx, int dy, int dz) {
-            const std::int64_t key_x = static_cast<std::int64_t>(center.x) + dx;
-            const std::int64_t key_y = static_cast<std::int64_t>(center.y) + dy;
-            const std::int64_t key_z = static_cast<std::int64_t>(center.z) + dz;
-            if (key_x < std::numeric_limits<std::int32_t>::min() ||
-                key_x > std::numeric_limits<std::int32_t>::max() ||
-                key_y < std::numeric_limits<std::int32_t>::min() ||
-                key_y > std::numeric_limits<std::int32_t>::max() ||
-                key_z < std::numeric_limits<std::int32_t>::min() ||
-                key_z > std::numeric_limits<std::int32_t>::max()) {
-                return;
-            }
-            const VoxelKey key{static_cast<std::int32_t>(key_x),
-                               static_cast<std::int32_t>(key_y),
-                               static_cast<std::int32_t>(key_z)};
-            const auto iter = voxels_.find(key);
-            if (iter == voxels_.end()) {
-                return;
-            }
-            for (const Point3f& point : iter->second.points) {
-                const float distance = SquaredDistance(point, query);
-                if (distance < max_squared_range) {
-                    InsertNeighbor(result, point, distance);
-                }
-            }
-        });
-        return result;
+    // Diagnostic path used to prove that the insertion-time neighborhood index
+    // preserves the original hash-probe result on real estimator workloads.
+    NeighborSet QueryDirect(const Point3f& query) const {
+        return QueryImpl(query, false);
     }
 
     void Query(const Point3f* queries, std::size_t count, NeighborSet* results) const {
@@ -216,6 +212,18 @@ public:
 
     std::size_t NumVoxels() const { return voxels_.size(); }
     std::size_t RejectedInsertions() const { return rejected_insertions_; }
+    std::size_t NumCachedQueryVoxels() const { return query_neighborhoods_.size(); }
+    std::size_t CachedVoxelReferences() const { return cached_voxel_references_; }
+    std::size_t EstimatedNeighborhoodCachePayloadBytes() const {
+        if (query_neighborhoods_.empty()) return 0U;
+        std::size_t bytes = query_neighborhoods_.bucket_count() * sizeof(void*);
+        bytes += query_neighborhoods_.size() *
+                 (sizeof(VoxelKey) + sizeof(CachedNeighborhood));
+        for (const auto& entry : query_neighborhoods_) {
+            bytes += entry.second.voxels.capacity() * sizeof(const Voxel*);
+        }
+        return bytes;
+    }
     const RepresentativeIvoxConfig& config() const { return config_; }
 
     static void ValidateConfig(const RepresentativeIvoxConfig& config) {
@@ -242,6 +250,49 @@ private:
     struct Voxel {
         std::vector<Point3f> points;
     };
+
+    struct CachedNeighborhood {
+        std::vector<const Voxel*> voxels;
+    };
+
+    NeighborSet QueryImpl(const Point3f& query, bool use_preexpanded_neighborhoods) const {
+        NeighborSet result;
+        if (!IsFinite(query)) {
+            return result;
+        }
+
+        VoxelKey center;
+        if (!PositionToKey(query, center)) {
+            return result;
+        }
+        const float max_squared_range = config_.max_range * config_.max_range;
+        const auto inspect_voxel = [&](const Voxel& voxel) {
+            for (const Point3f& point : voxel.points) {
+                const float distance = SquaredDistance(point, query);
+                if (distance < max_squared_range) {
+                    InsertNeighbor(result, point, distance);
+                }
+            }
+        };
+
+        if (use_preexpanded_neighborhoods) {
+            const auto cached = query_neighborhoods_.find(center);
+            if (cached != query_neighborhoods_.end()) {
+                for (const Voxel* voxel : cached->second.voxels) {
+                    inspect_voxel(*voxel);
+                }
+                return result;
+            }
+        }
+
+        VisitNeighborOffsets([&](int dx, int dy, int dz) {
+            VoxelKey key;
+            if (!OffsetKey(center, dx, dy, dz, key)) return;
+            const auto iter = voxels_.find(key);
+            if (iter != voxels_.end()) inspect_voxel(iter->second);
+        });
+        return result;
+    }
 
     static bool SamePoint(const Point3f& lhs, const Point3f& rhs) {
         return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
@@ -308,6 +359,53 @@ private:
         return true;
     }
 
+    static bool OffsetKey(const VoxelKey& key, int dx, int dy, int dz, VoxelKey& result) {
+        const std::int64_t x = static_cast<std::int64_t>(key.x) + dx;
+        const std::int64_t y = static_cast<std::int64_t>(key.y) + dy;
+        const std::int64_t z = static_cast<std::int64_t>(key.z) + dz;
+        if (x < std::numeric_limits<std::int32_t>::min() ||
+            x > std::numeric_limits<std::int32_t>::max() ||
+            y < std::numeric_limits<std::int32_t>::min() ||
+            y > std::numeric_limits<std::int32_t>::max() ||
+            z < std::numeric_limits<std::int32_t>::min() ||
+            z > std::numeric_limits<std::int32_t>::max()) {
+            return false;
+        }
+        result = VoxelKey{static_cast<std::int32_t>(x),
+                          static_cast<std::int32_t>(y),
+                          static_cast<std::int32_t>(z)};
+        return true;
+    }
+
+    void RegisterVoxelWithQueryNeighborhoods(const VoxelKey& home_key, const Voxel* voxel) {
+        if (!config_.preexpand_neighborhoods) return;
+
+        // Existing occupied query voxels that can see the new home voxel only
+        // need one appended pointer.
+        VisitNeighborOffsets([&](int dx, int dy, int dz) {
+            VoxelKey query_key;
+            if (!OffsetKey(home_key, -dx, -dy, -dz, query_key)) return;
+            const auto cached = query_neighborhoods_.find(query_key);
+            if (cached != query_neighborhoods_.end()) {
+                cached->second.voxels.push_back(voxel);
+                ++cached_voxel_references_;
+            }
+        });
+
+        // A cache entry is created only when its query voxel itself becomes
+        // occupied. Empty query voxels fall back to the direct 0/6/18/26 probe,
+        // avoiding the up-to-27x key expansion of a fully materialized index.
+        CachedNeighborhood neighborhood;
+        VisitNeighborOffsets([&](int dx, int dy, int dz) {
+            VoxelKey visible_home_key;
+            if (!OffsetKey(home_key, dx, dy, dz, visible_home_key)) return;
+            const auto visible = voxels_.find(visible_home_key);
+            if (visible != voxels_.end()) neighborhood.voxels.push_back(&visible->second);
+        });
+        cached_voxel_references_ += neighborhood.voxels.size();
+        query_neighborhoods_.emplace(home_key, std::move(neighborhood));
+    }
+
     float RepresentativeScore(const VoxelKey& key, const Point3f& point) const {
         const Point3f center{(static_cast<float>(key.x) + 0.5f) * config_.resolution,
                              (static_cast<float>(key.y) + 0.5f) * config_.resolution,
@@ -348,7 +446,9 @@ private:
     RepresentativeIvoxConfig config_;
     float inv_resolution_ = 1.0f;
     std::unordered_map<VoxelKey, Voxel, VoxelKeyHash> voxels_;
+    std::unordered_map<VoxelKey, CachedNeighborhood, VoxelKeyHash> query_neighborhoods_;
     std::size_t rejected_insertions_ = 0;
+    std::size_t cached_voxel_references_ = 0;
 };
 
 }  // namespace batchlio

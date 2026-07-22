@@ -11,6 +11,10 @@ original Batch-LIO path remains the default and CUDA remains an opt-in build.
 - `representative_cuda`: the same deterministic map and top-5 query on CUDA,
   with automatic CPU handling for batches below `cuda_min_batch_points`.
 
+The follow-up `fralio-cuda` branch also provides an exact, FR-LIO-inspired
+insertion-time neighborhood index for the representative CPU mirror. See
+[`FRALIO_CUDA.md`](FRALIO_CUDA.md) for design, verification, and A/B results.
+
 Representative maps use signed 32-bit voxel coordinates, reject non-finite or
 out-of-range points, support 0/6/18/26-neighbor lookup, and return a stable
 distance/coordinate ordering. The CUDA implementation uses an open-addressed
@@ -71,6 +75,7 @@ ros2 run batch_lio batchlio_mapping --ros-args \
   -p representative_nearby_type:=18 \
   -p representative_map_capacity:=262144 \
   -p representative_max_range:=5.0 \
+  -p representative_preexpand_neighborhoods:=true \
   -p cuda_min_batch_points:=512
 ```
 
@@ -84,6 +89,8 @@ Parameters:
 | `representative_map_capacity` | `262144` | maximum occupied voxels |
 | `representative_nearby_type` | `18` | center/face/edge/corner search: 0, 6, 18, or 26 |
 | `representative_max_range` | `5.0` | maximum accepted neighbor distance in metres |
+| `representative_preexpand_neighborhoods` | `true` | cache neighbor voxel pointers during insertion (FR-LIO-inspired CPU path) |
+| `representative_verify_preexpanded` | `false` | compare cached/direct CPU results exactly; diagnostic overhead |
 | `cuda_min_batch_points` | `512` | smaller batches query the CPU mirror |
 | `cuda_verify_queries` | `false` | compare every GPU result with the CPU reference |
 | `cuda_persistent_queries` | `false` | use mapped-memory persistent query service |
@@ -96,6 +103,11 @@ statistics, making crossover tuning observable rather than implicit.
 
 RTX 4070 Ti SUPER, CUDA 12.8, compute capability 8.9, 19,621 occupied voxels,
 K=4, nearby=18. Timings include input/output copies and synchronization:
+
+This table is the historical `x86-cuda` baseline with the direct CPU neighbor
+lookup. The `fralio-cuda` insertion-time CPU cache changes the CPU column and
+therefore requires a fresh crossover measurement on an otherwise idle target;
+see `FRALIO_CUDA.md` for its isolated and ROS A/B results.
 
 | query points | CPU (us) | normal CUDA (us) | persistent CUDA (us) |
 |---:|---:|---:|---:|

@@ -107,6 +107,8 @@ int representative_max_points_per_voxel = 4;
 int representative_map_capacity = 262144;
 int representative_nearby_type = 18;
 double representative_max_range = 5.0;
+bool representative_preexpand_neighborhoods = true;
+bool representative_verify_preexpanded = false;
 int cuda_min_batch_points = 512;
 bool cuda_verify_queries = false;
 bool cuda_persistent_queries = false;
@@ -135,6 +137,10 @@ void readParameters(rclcpp::Node::SharedPtr nh)
   get_param<int>(nh, "representative_map_capacity", representative_map_capacity, 262144);
   get_param<int>(nh, "representative_nearby_type", representative_nearby_type, 18);
   get_param<double>(nh, "representative_max_range", representative_max_range, 5.0);
+  get_param<bool>(nh, "representative_preexpand_neighborhoods",
+                  representative_preexpand_neighborhoods, true);
+  get_param<bool>(nh, "representative_verify_preexpanded",
+                  representative_verify_preexpanded, false);
   get_param<int>(nh, "cuda_min_batch_points", cuda_min_batch_points, 512);
   get_param<bool>(nh, "cuda_verify_queries", cuda_verify_queries, false);
   get_param<bool>(nh, "cuda_persistent_queries", cuda_persistent_queries, false);

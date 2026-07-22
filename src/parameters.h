@@ -76,6 +76,8 @@ extern int representative_max_points_per_voxel;
 extern int representative_map_capacity;
 extern int representative_nearby_type;
 extern double representative_max_range;
+extern bool representative_preexpand_neighborhoods;
+extern bool representative_verify_preexpanded;
 extern int cuda_min_batch_points;
 extern bool cuda_verify_queries;
 extern bool cuda_persistent_queries;

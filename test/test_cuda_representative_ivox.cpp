@@ -64,6 +64,9 @@ int main() {
     config.nearby_type = RepresentativeNearbyType::NEARBY18;
     config.capacity = 65536;
     config.max_range = 5.0f;
+    // The ROS representative CUDA backend keeps this exact cached CPU mirror
+    // for small batches and runtime fallback; exercise that production config.
+    config.preexpand_neighborhoods = true;
 
     RepresentativeIvox cpu(config);
     CudaRepresentativeIvox gpu(config);
