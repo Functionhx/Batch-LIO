@@ -1,8 +1,8 @@
-# batch-LIO vs Point-LIO — A/B Results
+# Batch-LIO vs Point-LIO — A/B Results
 
 **Date:** 2026-06-17 · **Machine:** 32-core x86_64, CPU-only, Docker `osrf/ros:noetic-desktop-full` · **Data:** HKU-MARS Avia bags (`/livox/lidar` CustomMsg + `/livox/imu`).
 
-**What batch-LIO changes vs Point-LIO** (innovation #1, Point-LIWO §3): group LiDAR points into 1 ms windows instead of per-timestamp; de-skew each point to the window's reference time using the EKF state's ω/v (eq 3.44–3.47); row-stack residuals of all valid points → one EKF update per window. Plus optional OpenMP on the per-point KNN+plane-fit loop. State model identical to Point-LIO (`use_imu_as_input=0`). No wheel-speed (innovation #2 out of scope).
+**What Batch-LIO changes vs Point-LIO** (innovation #1, Point-LIWO §3): group LiDAR points into 1 ms windows instead of per-timestamp; de-skew each point to the window's reference time using the EKF state's ω/v (eq 3.44–3.47); row-stack residuals of all valid points → one EKF update per window. Plus optional OpenMP on the per-point KNN+plane-fit loop. State model identical to Point-LIO (`use_imu_as_input=0`). No wheel-speed (innovation #2 out of scope).
 
 Reproducibility: each config = `run/run_lio.sh <launch> <bag> <out> <rate> <logsrc> "<args>"`. Metrics via `run/compare_traj.py`. Per-frame timing = the node's `[ mapping ]` running averages (wall-clock, rate-independent). Trajectory diff aligned per-frame vs the Point-LIO baseline.
 
@@ -39,10 +39,10 @@ All three processed 2602/2602 frames (no drops at rate 2.0) and emitted 2602 odo
 
 **Takeaways (HKU_MB):**
 - **Efficiency:** batch 1 ms + OMP is **3.6× faster** than baseline (16.21 → 4.56 ms/frame) — an even bigger win than quick-shack, because this denser scene puts more points in each 1 ms window, so OMP parallelizes more effectively. Batching alone is ~24% faster (16.21 → 12.26).
-- **Accuracy:** batch-LIO matches the baseline trajectory to **mean 0.031 m over a 103 m path (~0.03%)**, max 0.20 m — essentially identical estimation at a fraction of the compute.
+- **Accuracy:** Batch-LIO matches the baseline trajectory to **mean 0.031 m over a 103 m path (~0.03%)**, max 0.20 m — essentially identical estimation at a fraction of the compute.
 - Note: HKU_MB is a *traverse* (ends ~63.6 m from start), not a loop, so "start→end drift" is the true displacement (all configs agree at 63.64 m), not an error metric. With no ground truth, trajectory-consistency-vs-baseline is the accuracy measure here.
 
-**Headline:** batch-LIO reproduces Point-LIWO innovation #1 — **2.3–3.6× lower compute per frame** at **equal-or-better accuracy**, with the speedup growing on denser scenes, exactly as the "batch enables parallelism + fewer updates" thesis predicts.
+**Headline:** Batch-LIO reproduces Point-LIWO innovation #1 — **2.3–3.6× lower compute per frame** at **equal-or-better accuracy**, with the speedup growing on denser scenes, exactly as the "batch enables parallelism + fewer updates" thesis predicts.
 
 ---
 
@@ -55,7 +55,7 @@ All three processed 2602/2602 frames (no drops at rate 2.0) and emitted 2602 odo
 | batch 1 ms (publish per window) | **~913 Hz** (stable; the paper's selectable ~1000 Hz) |
 | baseline frame-rate odom | ~10 Hz |
 
-batch-LIO lifts stable odometry output from 10 Hz → ~913 Hz (~90×), the high-bandwidth claim.
+Batch-LIO lifts stable odometry output from 10 Hz → ~913 Hz (~90×), the high-bandwidth claim.
 
 ### 3b. batch_dt sweep (quick-shack, OMP on, de-skew on; baseline 7.69 ms / drift 0.072 m)
 | batch_dt | total ms | start→end drift | mean \|Δpos\| vs base |

@@ -1,6 +1,6 @@
 <div align="center">
 
-# batch‑LIO
+# Batch‑LIO
 
 **A batch‑wise extension of [Point‑LIO](https://github.com/hku-mars/Point-LIO):**
 per‑~1 ms batch EKF update with in‑batch motion de‑skew —
@@ -11,13 +11,13 @@ per‑~1 ms batch EKF update with in‑batch motion de‑skew —
 ![ROS2](https://img.shields.io/badge/ROS_2-Humble-22314E?logo=ros)
 ![C++](https://img.shields.io/badge/C%2B%2B-14-00599C?logo=c%2B%2B&logoColor=white)
 ![Build](https://img.shields.io/badge/colcon%20test-passing-brightgreen)
-![License](https://img.shields.io/badge/license-BSD-blue)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
 </div>
 
 ---
 
-batch‑LIO reproduces **innovation #1** of the USTC undergraduate thesis
+Batch‑LIO reproduces **innovation #1** of the USTC undergraduate thesis
 *《高带宽轮式激光惯性里程计》(Point‑LIWO — Batch‑based Direct Point LiDAR‑IMU‑Wheeled‑speed Odometry)*
 by 张昊鹏. It is built directly on HKU‑MARS **Point‑LIO** and kept A/B‑comparable with it
 (CPU‑only; wheel‑speed / innovation #2 is out of scope).
@@ -39,7 +39,7 @@ by 张昊鹏. It is built directly on HKU‑MARS **Point‑LIO** and kept A/B‑
 ## What it changes vs Point‑LIO
 
 Point‑LIO updates the EKF **point‑wise** (one update per distinct point timestamp) and already
-row‑stacks the measurement Jacobian over a group of same‑timestamp points. batch‑LIO changes two
+row‑stacks the measurement Jacobian over a group of same‑timestamp points. Batch‑LIO changes two
 things and adds OpenMP:
 
 1. **1 ms time‑window grouping** — points are grouped into fixed ~1 ms windows instead of by
@@ -84,7 +84,7 @@ Full numbers in [`docs/RESULTS.md`](docs/RESULTS.md) (ROS 1) and [`docs/RESULTS_
 | quick‑shack (ROS 2) | 12.42 | 3.51 | **3.5×** |
 | outdoor_run (ROS 2) | 2.56 | 0.54 | **4.7×** |
 
-batch‑LIO matches the baseline trajectory closely and closes the `outdoor_run` loop *better* than
+Batch‑LIO matches the baseline trajectory closely and closes the `outdoor_run` loop *better* than
 baseline (0.020 m vs 0.073 m).
 
 ### OpenMP only helps after batching ("batch enables parallelism")
@@ -97,7 +97,7 @@ baseline (0.020 m vs 0.073 m).
 | mode | stable odom rate |
 |------|------------------|
 | Point‑LIO frame‑rate odom | ~10 Hz |
-| **batch‑LIO 1 ms (publish per window)** | **~913 Hz** |
+| **Batch‑LIO 1 ms (publish per window)** | **~913 Hz** |
 
 ---
 
@@ -200,5 +200,5 @@ git checkout ros1-noetic        # inspect the original ROS 1 version
   thesis *《高带宽轮式激光惯性里程计》(Point‑LIWO)* by 张昊鹏.
 - De‑skew follows the FAST‑LIO / sr_lio motion‑compensation convention; the map uses an
   iVox‑style hashed‑voxel structure.
-- License follows the upstream Point‑LIO / LOAM / Livox license — see [`LICENSE`](LICENSE).
-  This is a research reproduction.
+- Licensed under **MIT** (see [`LICENSE`](LICENSE)); portions derived from
+  Point‑LIO / LOAM / Livox retain their BSD‑3 notices. This is a research reproduction.

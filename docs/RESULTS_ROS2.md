@@ -1,4 +1,4 @@
-# batch-LIO ROS2 Humble — A/B reproduction
+# Batch-LIO ROS2 Humble — A/B reproduction
 
 Re-running the [`docs/RESULTS.md`](RESULTS.md) A/B on the **`ros2-humble`** port (native
 `/opt/ros/humble`, 32 cores, ROS1 Avia bags converted to ROS2 mcap via `scripts/convert_bag.py`).

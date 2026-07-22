@@ -4,7 +4,7 @@
   <version>0.0.0</version>
   <description>batch-LIO: batch-wise Point-LIO with intra-window deskew (ROS2 Humble port).</description>
   <maintainer email="dev@livoxtech.com">batch-lio</maintainer>
-  <license>BSD</license>
+  <license>MIT</license>
   <author email="hdj65822@connect.hku.hk">Dongjiao He (Point-LIO)</author>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
