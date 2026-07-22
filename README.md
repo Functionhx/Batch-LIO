@@ -75,6 +75,10 @@ A/B vs pristine Point‑LIO, same bag and parameters, CPU‑only on a 32‑core 
 Full numbers in [`docs/RESULTS.md`](docs/RESULTS.md) (ROS 1) and [`docs/RESULTS_ROS2.md`](docs/RESULTS_ROS2.md)
 (re‑run on the ROS 2 port).
 
+> **No ground truth** is used. "Accuracy" below means **agreement with the Point‑LIO baseline**
+> (mean |Δpos|) plus **loop‑closure drift** on return‑loop bags — not error vs a true trajectory.
+> The only comparison object is Point‑LIO.
+
 ### Per‑frame compute: 2.3–4.7× faster
 
 ![speedup](docs/figures/fig1_speedup.png)
@@ -93,11 +97,17 @@ baseline (0.020 m vs 0.073 m).
 ### batch_dt sweep: 1–2 ms is the sweet spot
 ![sweep](docs/figures/fig4_batchdt_sweep.png)
 
-### High output bandwidth (publish per window)
-| mode | stable odom rate |
-|------|------------------|
-| Point‑LIO frame‑rate odom | ~10 Hz |
-| **Batch‑LIO 1 ms (publish per window)** | **~913 Hz** |
+### Odometry rate depends on publish policy (not a bandwidth gain)
+
+Batching **reduces** the EKF update count (windows ≪ points), so the raw max publish rate goes
+**down**, not up — the win is compute, not bandwidth. Point‑LIO isn't limited to 10 Hz either; its
+per‑point mode reaches ~6.7 kHz (noisy micro‑updates). For honesty:
+
+| scheme | publish policy | stable odom rate |
+|--------|----------------|------------------|
+| Point‑LIO | per frame (default) | ~10 Hz |
+| Point‑LIO | per point | ~6.7 kHz (noisy) |
+| Batch‑LIO 1 ms | per window | ~913 Hz |
 
 ---
 
