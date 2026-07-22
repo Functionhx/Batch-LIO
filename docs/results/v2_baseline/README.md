@@ -60,3 +60,31 @@ Raw: `batch_1ms_fine.profile.txt`, `batch_1ms_omp_fine.profile.txt`.
   A/B harness (`scripts/compare_traj.py`).
 - `profiling_enable` defaults to `false`; when off the profiler is a no-op (acceptance: <2% overhead).
 - These numbers are environment-bound (CPU/ROS/build/bag/commit) — see `docs/PLAN_V2.md` §3.4.
+
+## Update: clean baseline + Phase 1 experiments (re-measured after the Jazzy sub-agent finished)
+
+**Methodology fix:** the Phase-0 numbers above were captured while a heavy Docker build (the Jazzy
+port sub-agent) ran concurrently, inflating means and especially the tail (OMP-on `max` was 77 ms).
+Re-measured on a quiet machine (raw: `clean_off.profile.txt`, `clean_on.profile.txt`):
+
+| stage (batch 1 ms) | OMP off | OMP on (16 thr) |
+|---|---:|---:|
+| frame_total | 9.92 | 3.55 |
+| measurement_build | 9.06 | 2.63 (p50 2.72, max 5.1) |
+| serial_remainder | 0.52 | 0.57 |
+
+**Phase 1 experiments (both ruled out as throughput wins on quick-shack):**
+- *Reusable thread-local scratch buffer* (sub-task D): ST `measurement_build` 9.06 → ~8.7 (~4 %,
+  within noise); OMP p50 flat. Reverted.
+- *`unordered_dense` hashmap* (sub-task B): clean A/B **2.63 vs 2.63 — no measurable gain**. The
+  apparent earlier improvement was just the Jazzy-load confound disappearing. Reverted.
+
+**Conclusion:** the iVox hashmap lookup and the candidate allocation are **not** the ST bottleneck.
+`measurement_build`'s single-thread cost (9.06 ms) is dominated by the per-point KNN distance
+computation (`KNNPointByCondition` in `ivox3d_node.hpp`); OMP already delivers the win
+(9.06 → 2.63 ms, ~3.4×). Going faster on the ST path would require optimizing
+`KNNPointByCondition` itself (candidate pruning / SIMD / a smarter NN structure) — a deeper,
+higher-risk change. **Net: with OMP on, Batch-LIO is already ~3.55 ms/frame; the easy Phase-1
+levers (hashmap / alloc) add nothing here, and Phase 3 (accumulator) is already ruled out by the
+~0.5 ms `serial_remainder`.** This re-orders `PLAN_V2`'s MVP (§21): the remaining candidate lever
+is the KNN distance computation, not the data structures around it.
