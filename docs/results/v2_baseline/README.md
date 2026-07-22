@@ -23,11 +23,36 @@ Per-frame counts (batch 1 ms): ~734 points, ~93 batches, ~560 valid residuals.
 2. **The batch speedup is an OpenMP effect.** Single-threaded, batch (9.96 ms) ≈ point-wise
    (10.43 ms). Batching enlarges the per-window point groups so OpenMP pays off: OMP cuts
    `iterated_update` 9.67 → 3.24 ms (~3×). This reproduces the "batch enables parallelism" finding.
-3. **Next profiling step:** split `iterated_update` into `knn_search` / `plane_fit` /
-   `measurement_build` / `ekf_linear_solve` (instrument `h_model_output` in `Estimator.cpp` + the
-   IKFoM solve). This tells us how much is the KNN+plane-fit (what OMP parallelizes) vs the serial
-   EKF linear solve — and whether Phase 1 (iVox/KNN) or Phase 3 (information accumulator) is the
-   higher-leverage optimization.
+3. **Fine split of `iterated_update`** (below): `measurement_build` (the `h_model_output` call =
+   parallel KNN + plane-fit + serial Jacobian assembly) is **~94% of the single-threaded update**;
+   the serial remainder (IMU propagation + IKFoM linear solve + pre-fill + `pointBodyToWorld`) is
+   only ~0.5 ms (~5%); deskew is negligible (~0.02 ms).
+
+## Fine split of `iterated_update` (mean ms/frame)
+
+| stage | OMP off | OMP on (16 thr) | OMP-sensitive? |
+|---|---:|---:|---|
+| frame_total | 9.56 | 3.84 | yes |
+| iterated_update | 9.25 | 3.51 | yes |
+| → `measurement_build` (h_model_output: KNN+plane+Jacobian) | **8.74 (94%)** | **2.94** | **yes (~3×)** |
+| → `deskew` | 0.024 | 0.031 | no (negligible) |
+| → `serial_remainder` (IMU prop + EKF solve + overhead) | 0.49 (~5%) | 0.54 | **no** |
+
+Raw: `batch_1ms_fine.profile.txt`, `batch_1ms_omp_fine.profile.txt`.
+
+## Reprioritization (informs the plan §3.3 / §21)
+
+- **Phase 1 (optimize iVox/KNN) is the high-leverage target** — `measurement_build` is ~94% of the
+  update and the only stage OMP speeds up, so its dominant cost is the per-point KNN
+  (`ivox_->GetClosestPoint`) + plane-fit. That is exactly Phase 1's scope.
+- **Phase 3 (information accumulator) has a low ceiling here** — it targets the stacked-Jacobian
+  solve + dynamic matrix, which live in `serial_remainder` ≈ 0.5 ms (~5%). Replacing them saves at
+  most ~0.5 ms/frame on this bag. Worth keeping as an option but **not** the MVP priority the plan's
+  §21 implies.
+- Caveat: `measurement_build` also contains a *serial* Jacobian-assembly pass after the OMP loop;
+  the OMP speedup of the whole stage (~3×) implies that serial pass is a minority of it, but
+  separating KNN vs plane-fit vs Jacobian-assembly precisely needs a single-threaded micro-bench
+  (per-thread timing under OMP would overcount wall time).
 
 ## Notes / caveats
 

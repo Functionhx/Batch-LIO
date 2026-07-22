@@ -1,5 +1,6 @@
 // #include <../include/IKFoM/IKFoM_toolkit/esekfom/esekfom.hpp>
 #include "Estimator.h"
+#include "stage_profiler.h"   // v2 Phase 0: measurement_build timing
 
 PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
 std::vector<int> time_seq;
@@ -222,6 +223,7 @@ void h_model_input(state_input &s, Eigen::Matrix3d cov_p, Eigen::Matrix3d cov_R,
 
 void h_model_output(state_output &s, Eigen::Matrix3d cov_p, Eigen::Matrix3d cov_R, esekfom::dyn_share_modified<double> &ekfom_data)
 {
+	batchlio::FrameAccumScope _hmodel_scope(profiling_enable, batchlio::g_frame_acc.measurement_build_ms);
 	bool match_in_map = false;
 	normvec->resize(time_seq[k]);
 	int effect_num_k = 0;

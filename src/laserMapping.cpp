@@ -483,6 +483,7 @@ int main(int argc, char** argv)
             propag_time = 0;
             update_time = 0;
             t0 = omp_get_wtime();
+            if (profiling_enable) batchlio::g_frame_acc.reset();
             
             /*** downsample the feature points in a scan ***/
             t1 = omp_get_wtime();
@@ -709,6 +710,7 @@ int main(int argc, char** argv)
                     // Skipped when batch_dt<=0 (point-wise mode stays bit-identical to Point-LIO).
                     if (batch_dt > 0.0 && batch_deskew && time_seq[k] > 1)
                     {
+                        batchlio::FrameAccumScope _deskew_scope(profiling_enable, batchlio::g_frame_acc.deskew_ms);
                         const double t_last_ms = feats_down_body->points[idx + time_seq[k]].curvature;
                         const V3D omg_b = kf_output.x_.omg;   // I_omega (body frame)
                         const V3D vel_w = kf_output.x_.vel;   // G_v (world frame)
@@ -1058,6 +1060,9 @@ int main(int argc, char** argv)
                 if (profiling_enable) {
                     batchlio::g_profiler.add("publish", (omp_get_wtime() - t_pub0) * 1e3);
                     batchlio::g_profiler.add("frame_total", (omp_get_wtime() - t0) * 1e3);
+                    batchlio::g_profiler.add("measurement_build", batchlio::g_frame_acc.measurement_build_ms);
+                    batchlio::g_profiler.add("deskew", batchlio::g_frame_acc.deskew_ms);
+                    batchlio::g_profiler.add("serial_remainder", (t3 - t2) * 1e3 - batchlio::g_frame_acc.measurement_build_ms - batchlio::g_frame_acc.deskew_ms);
                     batchlio::g_profiler.count_frame(feats_down_size, static_cast<int>(time_seq.size()), effct_feat_num);
                     if (batchlio::g_profiler.frames % static_cast<std::uint64_t>(profiling_report_interval) == 0) {
                         char ptag[48];

@@ -6,6 +6,7 @@
 namespace batchlio {
 
 StageProfiler g_profiler;
+FrameAccumulator g_frame_acc;
 
 void StageProfiler::report(const char* tag) const {
     if (stages.empty()) return;

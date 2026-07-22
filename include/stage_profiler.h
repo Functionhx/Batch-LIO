@@ -71,4 +71,22 @@ struct ScopedStage {
 
 extern StageProfiler g_profiler;
 
+// Per-frame accumulator for stages reached deep inside the EKF update (h_model_output) or
+// per-window (deskew). Reset at frame start; read at frame end.
+struct FrameAccumulator {
+    double measurement_build_ms = 0.0;  // h_model_output wall (parallel KNN+plane-fit + serial Jacobian)
+    double deskew_ms = 0.0;             // intra-window de-skew wall
+    inline void reset() { measurement_build_ms = 0.0; deskew_ms = 0.0; }
+};
+extern FrameAccumulator g_frame_acc;
+
+// RAII: adds elapsed wall-ms to `target` on scope exit (only if active). Handles early returns.
+struct FrameAccumScope {
+    bool active;
+    double& target;
+    double t0;
+    FrameAccumScope(bool active, double& target) : active(active), target(target), t0(omp_get_wtime()) {}
+    ~FrameAccumScope() { if (active) target += (omp_get_wtime() - t0) * 1e3; }
+};
+
 }  // namespace batchlio
