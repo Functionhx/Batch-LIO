@@ -72,6 +72,9 @@ p'ⱼ = Rⱼ · pⱼ + Tⱼ
 完整数据见 [`docs/RESULTS.md`](docs/RESULTS.md)(ROS 1)与
 [`docs/RESULTS_ROS2.md`](docs/RESULTS_ROS2.md)(ROS 2 移植复测)。
 
+> **没有使用真值(ground truth)**。下文的"精度"指的是**与 Point‑LIO 基线的吻合度**
+> (平均 |Δpos|)加上闭环 bag 的**闭环漂移** —— 而非相对真实轨迹的误差。唯一的对比对象是 Point‑LIO。
+
 ### 每帧算力:快 2.3–4.7×
 
 ![speedup](docs/figures/fig1_speedup.png)
@@ -89,11 +92,16 @@ Batch‑LIO 轨迹与基线高度吻合,且 `outdoor_run` 闭环误差比基线*
 ### batch_dt 扫描:1–2ms 为甜点区
 ![sweep](docs/figures/fig4_batchdt_sweep.png)
 
-### 高输出带宽(每窗口发布)
-| 模式 | 稳定里程计频率 |
-|------|----------------|
-| Point‑LIO 帧率里程计 | ~10 Hz |
-| **Batch‑LIO 1ms(每窗口发布)** | **~913 Hz** |
+### 里程计频率取决于发布策略(不是带宽提升)
+
+批量**减少**了 EKF 更新次数(窗口数 ≪ 点数),所以原始最大发布频率是**下降**而非上升 ——
+收益在算力,不在带宽。Point‑LIO 也不是只能 10 Hz,它的按点发布可达 ~6.7 kHz(偏噪)。诚实对比:
+
+| 方案 | 发布策略 | 稳定里程计频率 |
+|------|----------|----------------|
+| Point‑LIO | 按帧(默认) | ~10 Hz |
+| Point‑LIO | 按点 | ~6.7 kHz(偏噪) |
+| Batch‑LIO 1ms | 按窗口 | ~913 Hz |
 
 ---
 

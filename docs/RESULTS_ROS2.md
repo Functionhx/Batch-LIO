@@ -48,3 +48,7 @@ The port is verified correct: clean build, `colcon test` green (deskew gtest + s
 launch_test), end-to-end odometry on a real Avia bag, and the **headline 2.3–3.6× speedup
 reproduces** (3.5× quick-shack, 4.7× outdoor_run). The de-skew correctness is covered by the unit
 test; its large-window drift benefit is bag/regime-dependent.
+
+**No ground truth** is used here either: the drift numbers are loop-closure (return-to-origin) on
+`outdoor_run`, and any "vs baseline" diff is agreement with the point-wise (`batch_dt=0`) run, not
+error vs a true trajectory.
