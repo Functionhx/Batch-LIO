@@ -11,8 +11,11 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include "li_initialization.h"
+#include <cerrno>
+#include <cstring>
 #include <malloc.h>
 #include <omp.h>
+#include <sys/stat.h>
 #include "deskew.h"
 #include "stage_profiler.h"   // v2 Phase 0: per-stage profiler
 
@@ -23,6 +26,40 @@ using namespace std;
 const float MOV_THRESHOLD = 1.5f;
 
 string root_dir = ROOT_DIR;
+
+namespace
+{
+bool EnsureDirectory(const std::string& path, std::string& error)
+{
+    struct stat path_stat {};
+    if (::stat(path.c_str(), &path_stat) == 0)
+    {
+        if (S_ISDIR(path_stat.st_mode)) return true;
+        error = path + " exists but is not a directory";
+        return false;
+    }
+
+    const int stat_error = errno;
+    if (stat_error != ENOENT)
+    {
+        error = "cannot inspect " + path + ": " + std::strerror(stat_error);
+        return false;
+    }
+
+    if (::mkdir(path.c_str(), 0755) == 0) return true;
+
+    const int mkdir_error = errno;
+    // Another process may have created the directory between stat() and mkdir().
+    if (mkdir_error == EEXIST && ::stat(path.c_str(), &path_stat) == 0 &&
+        S_ISDIR(path_stat.st_mode))
+    {
+        return true;
+    }
+
+    error = "cannot create " + path + ": " + std::strerror(mkdir_error);
+    return false;
+}
+}  // namespace
 
 int time_log_counter = 0; //, publish_count = 0;
 
@@ -57,6 +94,8 @@ void SigHandle(int sig)
 
 inline void dump_lio_state_to_log(FILE *fp)  
 {
+    if (fp == nullptr) return;
+
     V3D rot_ang;
     if (!use_imu_as_input)
     {
@@ -381,10 +420,29 @@ int main(int argc, char** argv)
     Eigen::Matrix<double, 24, 24> Q_input = process_noise_cov_input();
     Eigen::Matrix<double, 30, 30> Q_output = process_noise_cov_output();
     /*** debug record ***/
-    FILE *fp;
-    string pos_log_dir = root_dir + "/Log/pos_log.txt";
-    fp = fopen(pos_log_dir.c_str(),"w");
-    open_file();
+    FILE *fp = nullptr;
+    if (runtime_pos_log)
+    {
+        string log_dir = root_dir;
+        if (!log_dir.empty() && log_dir.back() != '/') log_dir.push_back('/');
+        log_dir += "Log";
+        string log_error;
+        if (EnsureDirectory(log_dir, log_error))
+        {
+            const string pos_log_dir = log_dir + "/pos_log.txt";
+            fp = fopen(pos_log_dir.c_str(), "w");
+            if (fp == nullptr)
+            {
+                RCLCPP_WARN(nh->get_logger(), "Cannot open %s: %s; position log disabled",
+                            pos_log_dir.c_str(), std::strerror(errno));
+            }
+            open_file();
+        }
+        else
+        {
+            RCLCPP_WARN(nh->get_logger(), "%s; runtime file logging disabled", log_error.c_str());
+        }
+    }
 
     /*** ROS2 subscribe / publish initialization ***/
     auto qos = rclcpp::SensorDataQoS();
@@ -1120,6 +1178,9 @@ int main(int argc, char** argv)
     }
     if (profiling_enable) batchlio::g_profiler.report("final");
     std::cout << "[batch-LIO map] " << MeasurementMapBackendRuntimeStats() << std::endl;
+    // tf_broadcaster is global and would otherwise be destroyed after shutdown invalidates
+    // the ROS context. Release its publisher while the context is still valid.
+    tf_broadcaster.reset();
     rclcpp::shutdown();
     //--------------------------save map-----------------------------------
     /* 1. make sure you have enough memories
@@ -1131,6 +1192,7 @@ int main(int argc, char** argv)
         pcl::PCDWriter pcd_writer;
         pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
     }
+    if (fp != nullptr) fclose(fp);
     fout_out.close();
     fout_imu_pbp.close();
     return 0;
