@@ -6,3 +6,11 @@ Log/
 PCD/
 __pycache__/
 *.pyc
+
+# v2 benchmark run artifacts (keep .profile.txt + README)
+docs/results/**/node.log
+docs/results/**/play.log
+docs/results/**/record.log
+docs/results/**/odom/
+docs/results/**/pos_log.txt
+.claude/

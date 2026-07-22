@@ -14,6 +14,7 @@
 #include <malloc.h>
 #include <omp.h>
 #include "deskew.h"
+#include "stage_profiler.h"   // v2 Phase 0: per-stage profiler
 
 using namespace std;     
 
@@ -328,6 +329,7 @@ int main(int argc, char** argv)
     else           omp_set_num_threads(1);
     printf("[batch-LIO] batch_dt=%.5f s, batch_omp=%d, omp_max_threads=%d\n",
            batch_dt, (int)batch_omp, omp_get_max_threads());
+    batchlio::g_profiler.omp_threads = batch_omp ? std::min(omp_get_max_threads(), 16) : 1;
     cout<<"lidar_type: "<<lidar_type<<endl;
     ivox_ = std::make_shared<IVoxType>(ivox_options_);
     
@@ -500,6 +502,7 @@ int main(int argc, char** argv)
                 time_seq = time_compressing_batch<int>(feats_down_body, batch_dt * 1000.0);  // batch-LIO: 1ms windows (batch_dt s -> ms)
                 feats_down_size = feats_down_body->points.size();
             }
+            if (profiling_enable) batchlio::g_profiler.add("preprocess_downsample_batch", (omp_get_wtime() - t1) * 1e3);
 
             if (!p_imu->after_imu_init_) // !p_imu->UseLIInit && 
             {
@@ -1037,6 +1040,7 @@ int main(int argc, char** argv)
 
             /*** add the feature points to map ***/
             t3 = omp_get_wtime();
+            if (profiling_enable) batchlio::g_profiler.add("iterated_update", (t3 - t2) * 1e3);
             
             if(feats_down_size > 4)
             {
@@ -1044,10 +1048,24 @@ int main(int argc, char** argv)
             }
 
             t5 = omp_get_wtime();
+            if (profiling_enable) batchlio::g_profiler.add("map_insert", (t5 - t3) * 1e3);
             /******* Publish points *******/
-            if (path_en)                         publish_path(pubPath);
-            if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFullRes);
-            if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFullRes_body);
+            {
+                double t_pub0 = profiling_enable ? omp_get_wtime() : 0.0;
+                if (path_en)                         publish_path(pubPath);
+                if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFullRes);
+                if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFullRes_body);
+                if (profiling_enable) {
+                    batchlio::g_profiler.add("publish", (omp_get_wtime() - t_pub0) * 1e3);
+                    batchlio::g_profiler.add("frame_total", (omp_get_wtime() - t0) * 1e3);
+                    batchlio::g_profiler.count_frame(feats_down_size, static_cast<int>(time_seq.size()), effct_feat_num);
+                    if (batchlio::g_profiler.frames % static_cast<std::uint64_t>(profiling_report_interval) == 0) {
+                        char ptag[48];
+                        std::snprintf(ptag, sizeof(ptag), "dt=%.4f", batch_dt);
+                        batchlio::g_profiler.report(ptag);
+                    }
+                }
+            }
             
             /*** Debug variables Logging ***/
             if (runtime_pos_log)
@@ -1085,6 +1103,7 @@ int main(int argc, char** argv)
         status = rclcpp::ok();
         loop_rate.sleep();
     }
+    if (profiling_enable) batchlio::g_profiler.report("final");
     rclcpp::shutdown();
     //--------------------------save map-----------------------------------
     /* 1. make sure you have enough memories

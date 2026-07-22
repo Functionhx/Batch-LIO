@@ -98,6 +98,9 @@ bool   batch_omp = false;     // batch-LIO: OpenMP on per-point KNN+plane-fit lo
 double batch_dt  = 0.001;     // batch-LIO: batch window length [s]; <=0 => point-wise (~Point-LIO)
 bool   batch_deskew = true;   // batch-LIO: intra-window de-skew on/off (ablation toggle)
 
+bool   profiling_enable = false;          // v2 Phase 0
+int    profiling_report_interval = 100;   // v2 Phase 0
+
 MeasureGroup Measures;
 
 ofstream fout_out, fout_imu_pbp;
@@ -114,6 +117,8 @@ void readParameters(rclcpp::Node::SharedPtr nh)
   get_param<bool>(nh, "batch_omp", batch_omp, false);
   get_param<double>(nh, "batch_dt", batch_dt, 0.001);
   get_param<bool>(nh, "batch_deskew", batch_deskew, true);
+  get_param<bool>(nh, "profiling_enable", profiling_enable, false);
+  get_param<int>(nh, "profiling_report_interval", profiling_report_interval, 100);
   get_param<double>(nh, "mapping.satu_acc", satu_acc, 3.0);
   get_param<double>(nh, "mapping.satu_gyro", satu_gyro, 35.0);
   get_param<double>(nh, "mapping.acc_norm", acc_norm, 1.0);

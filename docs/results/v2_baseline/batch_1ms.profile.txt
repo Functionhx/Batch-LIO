@@ -1,0 +1,12 @@
+[PROFILE] tag=dt=0.0010 frames=450 omp_threads=1 avg_pts=749.8 avg_batches=93.4 avg_residuals=561.0
+[PROFILE] tag=dt=0.0010 stage=frame_total count=450 mean_ms=9.8830 p50_ms=9.5411 p90_ms=16.1073 p95_ms=17.5330 p99_ms=20.3994 max_ms=25.0052
+[PROFILE] tag=dt=0.0010 stage=publish count=450 mean_ms=0.0216 p50_ms=0.0217 p90_ms=0.0285 p95_ms=0.0308 p99_ms=0.0366 max_ms=0.0433
+[PROFILE] tag=dt=0.0010 stage=map_insert count=450 mean_ms=0.0246 p50_ms=0.0218 p90_ms=0.0431 p95_ms=0.0500 p99_ms=0.0583 max_ms=0.0983
+[PROFILE] tag=dt=0.0010 stage=iterated_update count=450 mean_ms=9.5921 p50_ms=9.2620 p90_ms=15.6907 p95_ms=17.1792 p99_ms=20.0189 max_ms=24.6385
+[PROFILE] tag=dt=0.0010 stage=preprocess_downsample_batch count=457 mean_ms=0.2370 p50_ms=0.2347 p90_ms=0.3286 p95_ms=0.3907 p99_ms=0.4710 max_ms=0.5542
+[PROFILE] tag=final frames=483 omp_threads=1 avg_pts=734.1 avg_batches=93.1 avg_residuals=546.5
+[PROFILE] tag=final stage=frame_total count=483 mean_ms=9.9593 p50_ms=10.0942 p90_ms=15.7979 p95_ms=17.2890 p99_ms=20.3994 max_ms=25.0052
+[PROFILE] tag=final stage=publish count=483 mean_ms=0.0219 p50_ms=0.0223 p90_ms=0.0285 p95_ms=0.0304 p99_ms=0.0366 max_ms=0.0433
+[PROFILE] tag=final stage=map_insert count=483 mean_ms=0.0238 p50_ms=0.0208 p90_ms=0.0416 p95_ms=0.0496 p99_ms=0.0583 max_ms=0.0983
+[PROFILE] tag=final stage=iterated_update count=483 mean_ms=9.6745 p50_ms=9.8925 p90_ms=15.4811 p95_ms=16.9742 p99_ms=20.0189 max_ms=24.6385
+[PROFILE] tag=final stage=preprocess_downsample_batch count=490 mean_ms=0.2317 p50_ms=0.2319 p90_ms=0.3276 p95_ms=0.3670 p99_ms=0.4710 max_ms=0.5542

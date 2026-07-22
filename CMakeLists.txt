@@ -62,7 +62,8 @@ add_executable(batchlio_mapping
   src/parameters.cpp
   src/preprocess.cpp
   src/Estimator.cpp
-  src/IMU_Processing.cpp)
+  src/IMU_Processing.cpp
+  src/stage_profiler.cpp)
 target_link_libraries(batchlio_mapping
   ${PCL_LIBRARIES} Eigen3::Eigen OpenMP::OpenMP_CXX)
 ament_target_dependencies(batchlio_mapping

@@ -66,6 +66,9 @@ extern bool   batch_omp;      // batch-LIO: OpenMP on per-point KNN+plane-fit lo
 extern double batch_dt;       // batch-LIO: batch time-window length [s]; <=0 => point-wise
 extern bool   batch_deskew;   // batch-LIO: intra-window de-skew on/off (ablation toggle)
 
+extern bool   profiling_enable;          // v2 Phase 0: per-stage profiler on/off
+extern int    profiling_report_interval; // v2 Phase 0: print every N frames
+
 extern std::vector<double> extrinT;
 extern std::vector<double> extrinR;
 extern double time_diff_lidar_to_imu;

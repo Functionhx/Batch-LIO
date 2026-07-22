@@ -1,0 +1,6 @@
+[PROFILE] tag=final frames=484 omp_threads=1 avg_pts=733.8 avg_batches=731.6 avg_residuals=562.0
+[PROFILE] tag=final stage=frame_total count=484 mean_ms=10.4336 p50_ms=10.2644 p90_ms=16.5084 p95_ms=18.3148 p99_ms=22.3906 max_ms=24.7248
+[PROFILE] tag=final stage=publish count=484 mean_ms=0.0177 p50_ms=0.0176 p90_ms=0.0254 p95_ms=0.0263 p99_ms=0.0282 max_ms=0.0293
+[PROFILE] tag=final stage=map_insert count=484 mean_ms=0.0179 p50_ms=0.0167 p90_ms=0.0281 p95_ms=0.0316 p99_ms=0.0391 max_ms=0.0737
+[PROFILE] tag=final stage=iterated_update count=484 mean_ms=10.1279 p50_ms=10.0120 p90_ms=16.0741 p95_ms=17.7915 p99_ms=21.8001 max_ms=24.2508
+[PROFILE] tag=final stage=preprocess_downsample_batch count=490 mean_ms=0.2636 p50_ms=0.2342 p90_ms=0.4417 p95_ms=0.4977 p99_ms=0.5461 max_ms=0.5850
