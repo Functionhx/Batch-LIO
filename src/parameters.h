@@ -69,6 +69,18 @@ extern bool   batch_deskew;   // batch-LIO: intra-window de-skew on/off (ablatio
 extern bool   profiling_enable;          // v2 Phase 0: per-stage profiler on/off
 extern int    profiling_report_interval; // v2 Phase 0: print every N frames
 
+// x86-cuda: selectable measurement-map backend. original_cpu remains the default.
+extern std::string map_backend;
+extern float representative_map_resolution;
+extern int representative_max_points_per_voxel;
+extern int representative_map_capacity;
+extern int representative_nearby_type;
+extern double representative_max_range;
+extern int cuda_min_batch_points;
+extern bool cuda_verify_queries;
+extern bool cuda_persistent_queries;
+extern int cuda_persistent_max_batch_points;
+
 extern std::vector<double> extrinT;
 extern std::vector<double> extrinR;
 extern double time_diff_lidar_to_imu;

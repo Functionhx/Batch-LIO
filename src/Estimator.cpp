@@ -1,6 +1,12 @@
 // #include <../include/IKFoM/IKFoM_toolkit/esekfom/esekfom.hpp>
 #include "Estimator.h"
 #include "stage_profiler.h"   // v2 Phase 0: measurement_build timing
+#include "cuda/cuda_representative_ivox.h"
+#include "ivox/representative_ivox.h"
+
+#include <algorithm>
+#include <memory>
+#include <sstream>
 
 PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
 std::vector<int> time_seq;
@@ -23,6 +29,346 @@ int feats_down_size = 0;
 V3D Lidar_T_wrt_IMU(Zero3d);
 M3D Lidar_R_wrt_IMU(Eye3d);
 double G_m_s2 = 9.81;
+
+namespace {
+
+enum class ActiveMapBackend {
+	ORIGINAL_CPU,
+	REPRESENTATIVE_CPU,
+	REPRESENTATIVE_CUDA,
+};
+
+ActiveMapBackend active_map_backend = ActiveMapBackend::ORIGINAL_CPU;
+std::unique_ptr<batchlio::RepresentativeIvox> representative_cpu_map;
+std::unique_ptr<batchlio::CudaRepresentativeIvox> representative_cuda_map;
+std::vector<batchlio::Point3f> representative_insert_buffer;
+std::vector<batchlio::Point3f> cuda_query_buffer;
+std::vector<batchlio::NeighborSet> cuda_result_buffer;
+std::string map_backend_status = "original_cpu";
+bool cuda_failure_reported = false;
+std::uint64_t cuda_verified_queries = 0;
+std::uint64_t cuda_query_mismatches = 0;
+std::uint64_t cuda_gpu_query_batches = 0;
+std::uint64_t cuda_gpu_query_points = 0;
+std::uint64_t cuda_cpu_query_batches = 0;
+std::uint64_t cuda_cpu_query_points = 0;
+
+batchlio::RepresentativeNearbyType ParseNearbyType(int value)
+{
+	switch (value)
+	{
+		case 0: return batchlio::RepresentativeNearbyType::CENTER;
+		case 6: return batchlio::RepresentativeNearbyType::NEARBY6;
+		case 18: return batchlio::RepresentativeNearbyType::NEARBY18;
+		case 26: return batchlio::RepresentativeNearbyType::NEARBY26;
+		default: throw std::invalid_argument("representative_nearby_type must be 0, 6, 18, or 26");
+	}
+}
+
+batchlio::RepresentativeIvoxConfig MakeRepresentativeConfig()
+{
+	if (representative_map_capacity <= 0)
+	{
+		throw std::invalid_argument("representative_map_capacity must be positive");
+	}
+	batchlio::RepresentativeIvoxConfig config;
+	config.resolution = representative_map_resolution;
+	config.max_points_per_voxel = representative_max_points_per_voxel;
+	config.nearby_type = ParseNearbyType(representative_nearby_type);
+	config.capacity = static_cast<std::size_t>(representative_map_capacity);
+	config.max_range = static_cast<float>(representative_max_range);
+	batchlio::RepresentativeIvox::ValidateConfig(config);
+	return config;
+}
+
+void NeighborSetToPointVector(const batchlio::NeighborSet& source, PointVector& destination)
+{
+	destination.clear();
+	destination.reserve(batchlio::kRepresentativeIvoxMaxNeighbors);
+	for (int i = 0; i < source.count; ++i)
+	{
+		PointType point;
+		point.x = source.points[i].x;
+		point.y = source.points[i].y;
+		point.z = source.points[i].z;
+		destination.emplace_back(point);
+	}
+}
+
+void QueryRepresentativeCpu(const PointType& query, PointVector& neighbors)
+{
+	const batchlio::NeighborSet result = representative_cpu_map->Query(
+		batchlio::Point3f{query.x, query.y, query.z});
+	NeighborSetToPointVector(result, neighbors);
+}
+
+void QueryActiveCpuBackend(const PointType& query, PointVector& neighbors)
+{
+	if (active_map_backend == ActiveMapBackend::ORIGINAL_CPU || representative_cpu_map == nullptr)
+	{
+		ivox_->GetClosestPoint(query, neighbors, NUM_MATCH_POINTS);
+		return;
+	}
+	QueryRepresentativeCpu(query, neighbors);
+}
+
+bool PrepareCudaQueriesForCurrentBatch()
+{
+	if (active_map_backend != ActiveMapBackend::REPRESENTATIVE_CUDA ||
+		representative_cuda_map == nullptr || !representative_cuda_map->IsReady())
+	{
+		return false;
+	}
+
+	const int count = time_seq[k];
+	if (count < std::max(1, cuda_min_batch_points))
+	{
+		++cuda_cpu_query_batches;
+		cuda_cpu_query_points += static_cast<std::uint64_t>(count);
+		return false;
+	}
+	cuda_query_buffer.resize(static_cast<std::size_t>(count));
+	cuda_result_buffer.resize(static_cast<std::size_t>(count));
+	// A typical 1 ms window has only ~8 points. Creating an OpenMP team for
+	// these tiny copy/transform loops costs much more than the work itself.
+	#pragma omp parallel for if(count >= 64) schedule(static)
+	for (int j = 0; j < count; ++j)
+	{
+		PointType& point_body = feats_down_body->points[idx + j + 1];
+		PointType& point_world = feats_down_world->points[idx + j + 1];
+		pointBodyToWorld(&point_body, &point_world);
+		cuda_query_buffer[static_cast<std::size_t>(j)] =
+			batchlio::Point3f{point_world.x, point_world.y, point_world.z};
+	}
+
+	if (!representative_cuda_map->Query(cuda_query_buffer.data(), cuda_query_buffer.size(),
+									 cuda_result_buffer.data()))
+	{
+		if (!cuda_failure_reported)
+		{
+			std::cerr << "[batch-LIO CUDA] query failed; falling back to representative_cpu: "
+					  << representative_cuda_map->LastError() << std::endl;
+			cuda_failure_reported = true;
+		}
+		active_map_backend = ActiveMapBackend::REPRESENTATIVE_CPU;
+		map_backend_status = "CUDA query failed (" + representative_cuda_map->LastError() +
+			"); using representative_cpu";
+		++cuda_cpu_query_batches;
+		cuda_cpu_query_points += static_cast<std::uint64_t>(count);
+		return false;
+	}
+	++cuda_gpu_query_batches;
+	cuda_gpu_query_points += static_cast<std::uint64_t>(count);
+
+	if (cuda_verify_queries)
+	{
+		for (int j = 0; j < count; ++j)
+		{
+			const batchlio::NeighborSet cpu_result =
+				representative_cpu_map->Query(cuda_query_buffer[static_cast<std::size_t>(j)]);
+			const batchlio::NeighborSet& gpu_result = cuda_result_buffer[static_cast<std::size_t>(j)];
+			bool equal = cpu_result.count == gpu_result.count;
+			for (int rank = 0; equal && rank < cpu_result.count; ++rank)
+			{
+				const batchlio::Point3f& lhs = cpu_result.points[rank];
+				const batchlio::Point3f& rhs = gpu_result.points[rank];
+				equal = lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
+			}
+			++cuda_verified_queries;
+			if (!equal)
+			{
+				++cuda_query_mismatches;
+				if (cuda_query_mismatches <= 5)
+				{
+					std::cerr << "[batch-LIO CUDA VERIFY] mismatch query=" << cuda_verified_queries
+							  << " cpu_count=" << cpu_result.count
+							  << " gpu_count=" << gpu_result.count << std::endl;
+				}
+			}
+		}
+		if (cuda_verified_queries % 100000U < static_cast<std::uint64_t>(count))
+		{
+			std::cout << "[batch-LIO CUDA VERIFY] queries=" << cuda_verified_queries
+					  << " mismatches=" << cuda_query_mismatches << std::endl;
+		}
+	}
+
+	#pragma omp parallel for if(count >= 64) schedule(static)
+	for (int j = 0; j < count; ++j)
+	{
+		NeighborSetToPointVector(cuda_result_buffer[static_cast<std::size_t>(j)],
+							 Nearest_Points[idx + j + 1]);
+	}
+	return true;
+}
+
+}  // namespace
+
+bool InitializeMeasurementMapBackend()
+{
+	representative_cpu_map.reset();
+	representative_cuda_map.reset();
+	cuda_failure_reported = false;
+	cuda_verified_queries = 0;
+	cuda_query_mismatches = 0;
+	cuda_gpu_query_batches = 0;
+	cuda_gpu_query_points = 0;
+	cuda_cpu_query_batches = 0;
+	cuda_cpu_query_points = 0;
+	active_map_backend = ActiveMapBackend::ORIGINAL_CPU;
+	map_backend_status = "original_cpu";
+
+	if (map_backend == "original_cpu" || map_backend == "original")
+	{
+		return true;
+	}
+	if (map_backend != "representative_cpu" && map_backend != "representative_cuda")
+	{
+		map_backend_status = "invalid map_backend='" + map_backend + "'; using original_cpu";
+		return false;
+	}
+
+	try
+	{
+		const batchlio::RepresentativeIvoxConfig config = MakeRepresentativeConfig();
+		representative_cpu_map.reset(new batchlio::RepresentativeIvox(config));
+		active_map_backend = ActiveMapBackend::REPRESENTATIVE_CPU;
+		map_backend_status = "representative_cpu";
+		if (map_backend == "representative_cuda")
+		{
+			representative_cuda_map.reset(new batchlio::CudaRepresentativeIvox(config));
+			if (representative_cuda_map->IsReady())
+			{
+				if (cuda_persistent_queries)
+				{
+					if (cuda_persistent_max_batch_points <= 0 ||
+						!representative_cuda_map->StartPersistentQueryService(
+							static_cast<std::size_t>(cuda_persistent_max_batch_points)))
+					{
+						map_backend_status = "persistent CUDA query service unavailable (" +
+							representative_cuda_map->LastError() + "); using representative_cpu";
+						active_map_backend = ActiveMapBackend::REPRESENTATIVE_CPU;
+						return false;
+					}
+				}
+				active_map_backend = ActiveMapBackend::REPRESENTATIVE_CUDA;
+				map_backend_status = cuda_persistent_queries ?
+					"representative_cuda(persistent)" : "representative_cuda";
+				return true;
+			}
+			map_backend_status = "representative_cuda unavailable (" +
+				representative_cuda_map->LastError() + "); using representative_cpu";
+			return false;
+		}
+		return true;
+	}
+	catch (const std::exception& error)
+	{
+		representative_cpu_map.reset();
+		representative_cuda_map.reset();
+		active_map_backend = ActiveMapBackend::ORIGINAL_CPU;
+		map_backend_status = std::string("representative map configuration error (") +
+			error.what() + "); using original_cpu";
+		return false;
+	}
+}
+
+void ResetMeasurementMapBackend()
+{
+	if (representative_cpu_map != nullptr) representative_cpu_map->Reset();
+	if (representative_cuda_map != nullptr && representative_cuda_map->IsReady() &&
+		!representative_cuda_map->Reset())
+	{
+		active_map_backend = ActiveMapBackend::REPRESENTATIVE_CPU;
+		map_backend_status = "CUDA reset failed (" + representative_cuda_map->LastError() +
+			"); using representative_cpu";
+	}
+	cuda_failure_reported = false;
+	cuda_verified_queries = 0;
+	cuda_query_mismatches = 0;
+	cuda_gpu_query_batches = 0;
+	cuda_gpu_query_points = 0;
+	cuda_cpu_query_batches = 0;
+	cuda_cpu_query_points = 0;
+}
+
+void AddPointsToMapBackends(const PointVector& points)
+{
+	// Keep the original map hot even in representative modes. It is the safe
+	// runtime fallback if CUDA reports an error during a long run.
+	ivox_->AddPoints(points);
+	if (representative_cpu_map == nullptr || points.empty()) return;
+
+	representative_insert_buffer.resize(points.size());
+	for (std::size_t i = 0; i < points.size(); ++i)
+	{
+		representative_insert_buffer[i] = batchlio::Point3f{points[i].x, points[i].y, points[i].z};
+	}
+	representative_cpu_map->AddPoints(representative_insert_buffer.data(),
+									 representative_insert_buffer.size());
+
+	if (active_map_backend == ActiveMapBackend::REPRESENTATIVE_CUDA &&
+		representative_cuda_map != nullptr &&
+		!representative_cuda_map->AddPoints(representative_insert_buffer.data(),
+										 representative_insert_buffer.size()))
+	{
+		active_map_backend = ActiveMapBackend::REPRESENTATIVE_CPU;
+		map_backend_status = "CUDA insertion failed (" + representative_cuda_map->LastError() +
+			"); using representative_cpu";
+		if (!cuda_failure_reported)
+		{
+			std::cerr << "[batch-LIO CUDA] " << map_backend_status << std::endl;
+			cuda_failure_reported = true;
+		}
+	}
+}
+
+std::string MeasurementMapBackendDescription()
+{
+	std::ostringstream description;
+	description << map_backend_status;
+	if (representative_cpu_map != nullptr)
+	{
+		description << " resolution=" << representative_map_resolution
+					<< " K=" << representative_max_points_per_voxel
+					<< " nearby=" << representative_nearby_type
+					<< " capacity=" << representative_map_capacity;
+	}
+	if (active_map_backend == ActiveMapBackend::REPRESENTATIVE_CUDA)
+	{
+		description << " cuda_min_batch_points=" << cuda_min_batch_points;
+		description << " persistent="
+					<< (representative_cuda_map->PersistentQueryServiceReady() ? "true" : "false");
+		if (cuda_verify_queries)
+		{
+			description << " verify_queries=true";
+		}
+	}
+	return description.str();
+}
+
+std::string MeasurementMapBackendRuntimeStats()
+{
+	std::ostringstream description;
+	description << "backend=" << map_backend_status
+				<< " gpu_query_batches=" << cuda_gpu_query_batches
+				<< " gpu_query_points=" << cuda_gpu_query_points
+				<< " cpu_query_batches=" << cuda_cpu_query_batches
+				<< " cpu_query_points=" << cuda_cpu_query_points;
+	if (representative_cuda_map != nullptr)
+	{
+		const batchlio::CudaRepresentativeIvoxStats stats = representative_cuda_map->Stats();
+		description << " gpu_voxels=" << stats.voxel_count
+					<< " gpu_accepted_updates=" << stats.accepted_points
+					<< " gpu_rejected_updates=" << stats.rejected_points;
+	}
+	if (cuda_verify_queries)
+	{
+		description << " verified_queries=" << cuda_verified_queries
+					<< " mismatches=" << cuda_query_mismatches;
+	}
+	return description.str();
+}
 
 Eigen::Matrix<double, 24, 24> process_noise_cov_input()
 {
@@ -115,25 +461,29 @@ void h_model_input(state_input &s, Eigen::Matrix3d cov_p, Eigen::Matrix3d cov_R,
 	bool match_in_map = false;
 	normvec->resize(time_seq[k]);
 	int effect_num_k = 0;
+	const bool cuda_queries_ready = PrepareCudaQueriesForCurrentBatch();
 	// batch-LIO: parallelize the per-point KNN + plane-fit pass. Each iteration writes only
 	// j-indexed slots (point_selected_surf, normvec, Nearest_Points, feats_down_world), so there
 	// are no cross-iteration write conflicts; pabcd is made loop-private (was shared above) and
 	// effect_num_k is reduced. The Jacobian-assembly pass below stays serial (sequential row m).
-	#pragma omp parallel for schedule(dynamic) reduction(+:effect_num_k)
+	// Original iVox lookups are heavy enough to benefit from parallelism even in
+	// tiny batches. Representative lookups are much cheaper, so avoid waking an
+	// OpenMP team for their typical ~8-point windows.
+	#pragma omp parallel for if(batch_omp && (active_map_backend == ActiveMapBackend::ORIGINAL_CPU || time_seq[k] >= 64)) schedule(dynamic) reduction(+:effect_num_k)
 	for (int j = 0; j < time_seq[k]; j++)
 	{
 		VF(4) pabcd;
 		pabcd.setZero();
 		PointType &point_body_j  = feats_down_body->points[idx+j+1];
 		PointType &point_world_j = feats_down_world->points[idx+j+1];
-		pointBodyToWorld(&point_body_j, &point_world_j);
+		if (!cuda_queries_ready) pointBodyToWorld(&point_body_j, &point_world_j);
 		V3D p_body = pbody_list[idx+j+1];
 		double p_norm = p_body.norm();
 		V3D p_world;
 		p_world << point_world_j.x, point_world_j.y, point_world_j.z;
 		{
 			auto &points_near = Nearest_Points[idx+j+1];
-            ivox_->GetClosestPoint(point_world_j, points_near, NUM_MATCH_POINTS); // 
+			if (!cuda_queries_ready) QueryActiveCpuBackend(point_world_j, points_near);
 			if ((points_near.size() < NUM_MATCH_POINTS)) // || pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5) // 5)
 			{
 				point_selected_surf[idx+j+1] = false;
@@ -227,26 +577,26 @@ void h_model_output(state_output &s, Eigen::Matrix3d cov_p, Eigen::Matrix3d cov_
 	bool match_in_map = false;
 	normvec->resize(time_seq[k]);
 	int effect_num_k = 0;
+	const bool cuda_queries_ready = PrepareCudaQueriesForCurrentBatch();
 	// batch-LIO: parallelize the per-point KNN + plane-fit pass. Each iteration writes only
 	// j-indexed slots (point_selected_surf, normvec, Nearest_Points, feats_down_world), so there
 	// are no cross-iteration write conflicts; pabcd is made loop-private (was shared above) and
 	// effect_num_k is reduced. The Jacobian-assembly pass below stays serial (sequential row m).
-	#pragma omp parallel for schedule(dynamic) reduction(+:effect_num_k)
+	#pragma omp parallel for if(batch_omp && (active_map_backend == ActiveMapBackend::ORIGINAL_CPU || time_seq[k] >= 64)) schedule(dynamic) reduction(+:effect_num_k)
 	for (int j = 0; j < time_seq[k]; j++)
 	{
 		VF(4) pabcd;
 		pabcd.setZero();
 		PointType &point_body_j  = feats_down_body->points[idx+j+1];
 		PointType &point_world_j = feats_down_world->points[idx+j+1];
-		pointBodyToWorld(&point_body_j, &point_world_j);
+		if (!cuda_queries_ready) pointBodyToWorld(&point_body_j, &point_world_j);
 		V3D p_body = pbody_list[idx+j+1];
 		double p_norm = p_body.norm();
 		V3D p_world;
 		p_world << point_world_j.x, point_world_j.y, point_world_j.z;
 		{
 			auto &points_near = Nearest_Points[idx+j+1];
-			
-            ivox_->GetClosestPoint(point_world_j, points_near, NUM_MATCH_POINTS); // 
+			if (!cuda_queries_ready) QueryActiveCpuBackend(point_world_j, points_near);
 			
 			if ((points_near.size() < NUM_MATCH_POINTS)) // || pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5)
 			{

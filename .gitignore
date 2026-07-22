@@ -14,3 +14,9 @@ docs/results/**/record.log
 docs/results/**/odom/
 docs/results/**/pos_log.txt
 .claude/
+
+# Local colcon/CUDA build artifacts
+/build/
+/install/
+/log/
+/.cuda-build/

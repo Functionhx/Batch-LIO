@@ -148,7 +148,7 @@ void MapIncremental() {
             points_to_add.emplace_back(point_world);
         }
     }
-    ivox_->AddPoints(points_to_add);
+    AddPointsToMapBackends(points_to_add);
 }
 
 void publish_init_map(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFullRes)
@@ -332,6 +332,12 @@ int main(int argc, char** argv)
     batchlio::g_profiler.omp_threads = batch_omp ? std::min(omp_get_max_threads(), 16) : 1;
     cout<<"lidar_type: "<<lidar_type<<endl;
     ivox_ = std::make_shared<IVoxType>(ivox_options_);
+    if (!InitializeMeasurementMapBackend())
+    {
+        RCLCPP_WARN(nh->get_logger(), "%s", MeasurementMapBackendDescription().c_str());
+    }
+    RCLCPP_INFO(nh->get_logger(), "measurement map backend: %s",
+                MeasurementMapBackendDescription().c_str());
     
     path.header.stamp    = stamp_from_sec(lidar_end_time);
     path.header.frame_id ="camera_init";
@@ -430,6 +436,7 @@ int main(int argc, char** argv)
                 
                 {
                     ivox_.reset(new IVoxType(ivox_options_));
+                    ResetMeasurementMapBackend();
                 }
             }
 
@@ -546,7 +553,7 @@ int main(int argc, char** argv)
                 {init_map = false;}
                 else
                 {   
-                    ivox_->AddPoints(init_feats_world->points);
+                    AddPointsToMapBackends(init_feats_world->points);
                     publish_init_map(pubLaserCloudMap); //(pubLaserCloudFullRes);
                     
                     init_feats_world.reset(new PointCloudXYZI());
@@ -564,8 +571,11 @@ int main(int argc, char** argv)
             t2 = omp_get_wtime();
             
             /*** iterated state estimation ***/
-            crossmat_list.reserve(feats_down_size);
-            pbody_list.reserve(feats_down_size);
+            // operator[] below requires constructed elements. reserve() alone only
+            // allocates storage and left both vectors at size zero, which made the
+            // indexed writes undefined behaviour.
+            crossmat_list.resize(feats_down_size);
+            pbody_list.resize(feats_down_size);
             // pbody_ext_list.reserve(feats_down_size);
                           
             for (size_t i = 0; i < feats_down_body->size(); i++)
@@ -1109,6 +1119,7 @@ int main(int argc, char** argv)
         loop_rate.sleep();
     }
     if (profiling_enable) batchlio::g_profiler.report("final");
+    std::cout << "[batch-LIO map] " << MeasurementMapBackendRuntimeStats() << std::endl;
     rclcpp::shutdown();
     //--------------------------save map-----------------------------------
     /* 1. make sure you have enough memories

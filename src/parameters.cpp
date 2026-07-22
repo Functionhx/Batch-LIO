@@ -101,6 +101,17 @@ bool   batch_deskew = true;   // batch-LIO: intra-window de-skew on/off (ablatio
 bool   profiling_enable = false;          // v2 Phase 0
 int    profiling_report_interval = 100;   // v2 Phase 0
 
+std::string map_backend = "original_cpu";
+float representative_map_resolution = 0.5f;
+int representative_max_points_per_voxel = 4;
+int representative_map_capacity = 262144;
+int representative_nearby_type = 18;
+double representative_max_range = 5.0;
+int cuda_min_batch_points = 512;
+bool cuda_verify_queries = false;
+bool cuda_persistent_queries = false;
+int cuda_persistent_max_batch_points = 2048;
+
 MeasureGroup Measures;
 
 ofstream fout_out, fout_imu_pbp;
@@ -119,6 +130,15 @@ void readParameters(rclcpp::Node::SharedPtr nh)
   get_param<bool>(nh, "batch_deskew", batch_deskew, true);
   get_param<bool>(nh, "profiling_enable", profiling_enable, false);
   get_param<int>(nh, "profiling_report_interval", profiling_report_interval, 100);
+  get_param<std::string>(nh, "map_backend", map_backend, "original_cpu");
+  get_param<int>(nh, "representative_max_points_per_voxel", representative_max_points_per_voxel, 4);
+  get_param<int>(nh, "representative_map_capacity", representative_map_capacity, 262144);
+  get_param<int>(nh, "representative_nearby_type", representative_nearby_type, 18);
+  get_param<double>(nh, "representative_max_range", representative_max_range, 5.0);
+  get_param<int>(nh, "cuda_min_batch_points", cuda_min_batch_points, 512);
+  get_param<bool>(nh, "cuda_verify_queries", cuda_verify_queries, false);
+  get_param<bool>(nh, "cuda_persistent_queries", cuda_persistent_queries, false);
+  get_param<int>(nh, "cuda_persistent_max_batch_points", cuda_persistent_max_batch_points, 2048);
   get_param<double>(nh, "mapping.satu_acc", satu_acc, 3.0);
   get_param<double>(nh, "mapping.satu_gyro", satu_gyro, 35.0);
   get_param<double>(nh, "mapping.acc_norm", acc_norm, 1.0);
@@ -169,6 +189,7 @@ void readParameters(rclcpp::Node::SharedPtr nh)
   get_param<double>(nh, "mapping.lidar_time_inte", lidar_time_inte, 0.1);
 
   get_param<float>(nh, "mapping.ivox_grid_resolution", ivox_options_.resolution_, 0.2);
+  get_param<float>(nh, "mapping.representative_map_resolution", representative_map_resolution, 0.5f);
   get_param<int>(nh, "ivox_nearby_type", ivox_nearby_type, 18);
   if (ivox_nearby_type == 0) {
     ivox_options_.nearby_type_ = IVoxType::NearbyType::CENTER;

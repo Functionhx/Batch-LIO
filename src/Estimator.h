@@ -58,4 +58,12 @@ void h_model_IMU_output(state_output &s, esekfom::dyn_share_modified<double> &ek
 
 void pointBodyToWorld(PointType const * const pi, PointType * const po);
 
+// Measurement-map lifecycle. The original iVox is always maintained so CUDA
+// failures can fall back safely without restarting the estimator.
+bool InitializeMeasurementMapBackend();
+void ResetMeasurementMapBackend();
+void AddPointsToMapBackends(const PointVector& points);
+std::string MeasurementMapBackendDescription();
+std::string MeasurementMapBackendRuntimeStats();
+
 #endif
