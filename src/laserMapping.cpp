@@ -1085,6 +1085,12 @@ int main(int argc, char** argv)
         status = rclcpp::ok();
         loop_rate.sleep();
     }
+    // Release the global tf broadcaster (and its publisher) BEFORE rclcpp::shutdown() so it is
+    // torn down while the rcl context is still valid. tf_broadcaster is a file-scope static, so
+    // it would otherwise not be destroyed until exit() -- after shutdown() already invalidated
+    // the context. On Jazzy/Fast-DDS that post-shutdown destruction throws std::system_error
+    // (EINVAL on a destroyed mutex) from a noexcept destructor and aborts the node on Ctrl-C.
+    tf_broadcaster.reset();
     rclcpp::shutdown();
     //--------------------------save map-----------------------------------
     /* 1. make sure you have enough memories
