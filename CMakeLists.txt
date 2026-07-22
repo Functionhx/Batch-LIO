@@ -11,6 +11,22 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-unused-but-set-variable)
 
+# ---- v2: optional aggressive optimizations (Small Point-LIO toolchain; OFF by default) ----
+# These can change float results / be non-portable; only enable deliberately and re-verify trajectory.
+option(BATCH_LIO_NATIVE_OPT "Enable -march=native (not portable across CPUs)" OFF)
+option(BATCH_LIO_FAST_MATH "Enable -ffast-math -fno-math-errno (reassociates float sums; re-verify filter)" OFF)
+option(BATCH_LIO_LTO "Enable link-time optimization" OFF)
+if(BATCH_LIO_NATIVE_OPT)
+    add_compile_options(-march=native)
+endif()
+if(BATCH_LIO_FAST_MATH)
+    add_compile_options(-ffast-math -fno-math-errno)
+endif()
+if(BATCH_LIO_LTO)
+    add_compile_options(-flto)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
 # ---- OpenMP (preserved from ROS1: auto thread count by core count) ----

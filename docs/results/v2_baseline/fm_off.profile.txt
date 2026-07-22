@@ -1,0 +1,9 @@
+[PROFILE] tag=final frames=483 omp_threads=1 avg_pts=733.9 avg_batches=93.1 avg_residuals=566.5
+[PROFILE] tag=final stage=serial_remainder count=483 mean_ms=0.3906 p50_ms=0.3763 p90_ms=0.5396 p95_ms=0.5820 p99_ms=0.6346 max_ms=0.7220
+[PROFILE] tag=final stage=deskew count=483 mean_ms=0.0232 p50_ms=0.0198 p90_ms=0.0371 p95_ms=0.0388 p99_ms=0.0416 max_ms=0.0440
+[PROFILE] tag=final stage=measurement_build count=483 mean_ms=8.6371 p50_ms=8.4553 p90_ms=14.2855 p95_ms=15.7729 p99_ms=18.8183 max_ms=20.8371
+[PROFILE] tag=final stage=frame_total count=483 mean_ms=9.3383 p50_ms=9.1211 p90_ms=15.1603 p95_ms=16.7444 p99_ms=19.7504 max_ms=21.8192
+[PROFILE] tag=final stage=publish count=483 mean_ms=0.0185 p50_ms=0.0188 p90_ms=0.0245 p95_ms=0.0256 p99_ms=0.0288 max_ms=0.0520
+[PROFILE] tag=final stage=map_insert count=483 mean_ms=0.0157 p50_ms=0.0144 p90_ms=0.0257 p95_ms=0.0282 p99_ms=0.0369 max_ms=0.0439
+[PROFILE] tag=final stage=iterated_update count=483 mean_ms=9.0509 p50_ms=8.8724 p90_ms=14.8276 p95_ms=16.2477 p99_ms=19.4368 max_ms=21.5066
+[PROFILE] tag=final stage=preprocess_downsample_batch count=490 mean_ms=0.2464 p50_ms=0.2250 p90_ms=0.4260 p95_ms=0.4621 p99_ms=0.5174 max_ms=0.5490
