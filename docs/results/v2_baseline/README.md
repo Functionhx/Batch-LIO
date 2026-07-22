@@ -88,3 +88,27 @@ higher-risk change. **Net: with OMP on, Batch-LIO is already ~3.55 ms/frame; the
 levers (hashmap / alloc) add nothing here, and Phase 3 (accumulator) is already ruled out by the
 ~0.5 ms `serial_remainder`.** This re-orders `PLAN_V2`'s MVP (§21): the remaining candidate lever
 is the KNN distance computation, not the data structures around it.
+
+## Small Point-LIO ideas — R&D summary (branch `perf/native-fast-math`)
+
+Tested the transferable Small Point-LIO runtime techniques on top of Batch-LIO's existing
+batch + OMP code (quick-shack, clean machine):
+
+| idea | ST `measurement_build` | OMP-on p50 | verdict |
+|---|---|---|---|
+| `unordered_dense` hashmap (sub-task B) | 9.06 → 9.06 | 2.72 → 2.72 | no gain |
+| reusable thread-local scratch (sub-task D) | 9.06 → ~8.7 | flat | marginal (noise) |
+| `-march=native -ffast-math` (toolchain, §17) | 9.06 → 8.64 (~5 %) | 2.72 → 2.73 | ~5 % ST, OMP-flat; **trajectory safe** |
+
+The native/fast-math/lto CMake options (`BATCH_LIO_NATIVE_OPT`, `BATCH_LIO_FAST_MATH`,
+`BATCH_LIO_LTO`) are added **OFF by default** — available and reproducible. `-ffast-math` does not
+diverge the filter (22.4 m trajectory, 0.07 m drift on quick-shack).
+
+**Why the ideas don't stack:** Batch-LIO already OMP-parallelizes the per-point KNN + plane-fit
+(which *is* its 3.5× over point-wise) — the same win Small Point-LIO gets a different way (a faster
+per-point backend). The residual ST cost is raw per-point KNN distance computation
+(`KNNPointByCondition`) that `-O3` + OMP already handle; hashmap / alloc / fast-math barely touch
+it. So Small Point-LIO's runtime micro-opts and Batch-LIO's batch+OMP are **alternative routes to
+similar speed, not additive**. The only remaining runtime lever is rewriting
+`KNNPointByCondition` itself; IKFoM→lean-ESKF (another Small Point-LIO idea) would help compile
+time / code clarity, not runtime (the EKF solve is ~0.5 ms).
