@@ -6,3 +6,31 @@ Log/
 PCD/
 __pycache__/
 *.pyc
+
+# Research workstream (tracked only on the research branches, e.g. cuda-x86).
+# When switching from a research branch these directories stay on disk as
+# untracked files; without these rules a `git add -A` on a public branch
+# silently stages ~295k lines of unpublished work. Already-tracked files are
+# unaffected by these rules.
+/crb_theory/
+/crb_pilot/
+/pcrb_definition/
+/qd_verify/
+/theorem_a/
+/variance_theory/
+/e1_2_prediction/
+/geometry_term/
+/bias_validation/
+/numstab_pilot/
+/moonshot_probe/
+/bench/
+/profile_output/
+/eval/
+/docs/results/
+
+# Build / editor caches
+/build/
+/install/
+/log/
+/.cache/
+/.cuda-build/
