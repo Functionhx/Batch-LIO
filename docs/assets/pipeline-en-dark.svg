@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="440" viewBox="0 0 1280 440" role="img" aria-label="What happens in every 1 ms window">
+<defs>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="#6e7681"/></marker>
+<marker id="arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="#3987e5"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1279" height="439" rx="16" fill="#0d1117" stroke="#30363d"/>
+<text x="40.0" y="60.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="28" font-weight="700" fill="#f0f6fc" text-anchor="start" >What happens in every 1 ms window</text>
+<rect x="40" y="210" width="170" height="132" rx="14" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+<text x="125.0" y="256.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="19" font-weight="700" fill="#f0f6fc" text-anchor="middle" >LiDAR scan</text>
+<text x="125.0" y="288.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="17" font-weight="500" fill="#9198a1" text-anchor="middle" >per‑point</text>
+<text x="125.0" y="312.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="17" font-weight="500" fill="#9198a1" text-anchor="middle" >timestamps</text>
+<line x1="215" y1="276.0" x2="241" y2="276.0" stroke="#6e7681" stroke-width="1.6" marker-end="url(#ar)"/>
+<rect x="246" y="210" width="170" height="132" rx="14" fill="#3987e5" fill-opacity="0.07" stroke="#3987e5" stroke-width="1.5"/>
+<rect x="364" y="199" width="44" height="22" rx="11" fill="#3987e5"/>
+<text x="386.0" y="214.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle" >NEW</text>
+<text x="331.0" y="256.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="19" font-weight="700" fill="#f0f6fc" text-anchor="middle" >1 ms windows</text>
+<text x="331.0" y="288.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="17" font-weight="500" fill="#9198a1" text-anchor="middle" >group by time,</text>
+<text x="331.0" y="312.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="17" font-weight="500" fill="#9198a1" text-anchor="middle" >not by timestamp</text>
+<line x1="421" y1="276.0" x2="447" y2="276.0" stroke="#6e7681" stroke-width="1.6" marker-end="url(#ar)"/>
+<rect x="452" y="210" width="170" height="132" rx="14" fill="#3987e5" fill-opacity="0.07" stroke="#3987e5" stroke-width="1.5"/>
+<rect x="570" y="199" width="44" height="22" rx="11" fill="#3987e5"/>
+<text x="592.0" y="214.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle" >NEW</text>
+<text x="537.0" y="256.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="19" font-weight="700" fill="#f0f6fc" text-anchor="middle" >In‑window de‑skew</text>
+<text x="537.0" y="288.0" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace" font-size="15" font-weight="500" fill="#9198a1" text-anchor="middle" >p′ = Exp(ωΔt)·p</text>
+<text x="537.0" y="312.0" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace" font-size="15" font-weight="500" fill="#9198a1" text-anchor="middle" >+ R_Iᵀ·v·Δt</text>
+<line x1="627" y1="276.0" x2="653" y2="276.0" stroke="#6e7681" stroke-width="1.6" marker-end="url(#ar)"/>
+<rect x="658" y="210" width="170" height="132" rx="14" fill="#3987e5" fill-opacity="0.07" stroke="#3987e5" stroke-width="1.5"/>
+<rect x="776" y="199" width="44" height="22" rx="11" fill="#3987e5"/>
+<text x="798.0" y="214.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle" >NEW</text>
+<text x="743.0" y="256.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="19" font-weight="700" fill="#f0f6fc" text-anchor="middle" >KNN + plane fit</text>
+<text x="743.0" y="288.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="17" font-weight="500" fill="#9198a1" text-anchor="middle" >per point,</text>
+<text x="743.0" y="312.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="17" font-weight="500" fill="#9198a1" text-anchor="middle" >OpenMP‑parallel</text>
+<line x1="833" y1="276.0" x2="859" y2="276.0" stroke="#6e7681" stroke-width="1.6" marker-end="url(#ar)"/>
+<rect x="864" y="210" width="170" height="132" rx="14" fill="#3987e5" fill-opacity="0.07" stroke="#3987e5" stroke-width="1.5"/>
+<rect x="982" y="199" width="44" height="22" rx="11" fill="#3987e5"/>
+<text x="1004.0" y="214.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle" >NEW</text>
+<text x="949.0" y="256.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="19" font-weight="700" fill="#f0f6fc" text-anchor="middle" >One IEKF update</text>
+<text x="949.0" y="288.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="17" font-weight="500" fill="#9198a1" text-anchor="middle" >stacked residuals,</text>
+<text x="949.0" y="312.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="17" font-weight="500" fill="#9198a1" text-anchor="middle" >once per window</text>
+<line x1="1039" y1="276.0" x2="1065" y2="276.0" stroke="#6e7681" stroke-width="1.6" marker-end="url(#ar)"/>
+<rect x="1070" y="210" width="170" height="132" rx="14" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+<text x="1155.0" y="256.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="19" font-weight="700" fill="#f0f6fc" text-anchor="middle" >iVox map</text>
+<text x="1155.0" y="288.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="17" font-weight="500" fill="#9198a1" text-anchor="middle" >insert points</text>
+<rect x="412.0" y="92" width="330" height="70" rx="14" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+<text x="577.0" y="120.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="19" font-weight="700" fill="#f0f6fc" text-anchor="middle" >EKF state (IMU‑propagated)</text>
+<text x="577.0" y="144.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="16" font-weight="500" fill="#9198a1" text-anchor="middle" >ω, v, R_I at window end</text>
+<line x1="537.0" y1="162" x2="537.0" y2="196" stroke="#3987e5" stroke-width="1.8" marker-end="url(#arb)"/>
+<path d="M949.0,196 V127.0 H747.0" fill="none" stroke="#6e7681" stroke-width="1.6" marker-end="url(#ar)"/>
+<path d="M1155.0,347 V372 H743.0 V348" fill="none" stroke="#6e7681" stroke-width="1.6" marker-end="url(#ar)"/>
+<text x="949.0" y="396.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="16" font-weight="500" fill="#9198a1" text-anchor="middle" >nearest neighbours</text>
+<rect x="40" y="396" width="14" height="14" rx="4" fill="#3987e5" fill-opacity="0.15" stroke="#3987e5"/>
+<text x="62.0" y="409.0" font-family="'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC',Helvetica,Arial,sans-serif" font-size="16" font-weight="500" fill="#9198a1" text-anchor="start" >changed vs Point‑LIO</text>
+</svg>

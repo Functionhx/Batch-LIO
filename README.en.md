@@ -1,148 +1,118 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/assets/hero-light.svg">
-  <img src="docs/assets/hero-light.svg" alt="Batch-LIO: one EKF update per 1 ms window" width="100%">
-</picture>
+<img src="docs/assets/hero.svg" alt="Batch-LIO: one EKF update per 1 ms window" width="100%">
 
 <br>
-
-# Same accuracy. A quarter of the compute.
-
-**Batch‑LIO** changes how often Point‑LIO updates the filter:<br>
-instead of updating point by point, it updates once per **millisecond** batch.
-
 <br>
 
-[![ROS 2 Humble](https://img.shields.io/badge/ROS_2-Humble-22314E?style=for-the-badge&logo=ros&logoColor=white)](#-up-and-running-in-three-minutes)
-[![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-22314E?style=for-the-badge&logo=ros&logoColor=white)](docker/README.md)
-[![colcon test](https://img.shields.io/badge/tests-passing-3fb950?style=for-the-badge)](#-engineered-to-be-trusted)
-[![License: MIT](https://img.shields.io/badge/license-MIT-0969da?style=for-the-badge)](LICENSE)
+<h1>Same accuracy. A quarter of the compute.</h1>
 
-<a href="README.md">中文</a> · <b>English</b>
+<p>
+<b>Batch‑LIO</b> changes how often Point‑LIO updates the filter:<br>
+instead of point by point, it updates once per <b>millisecond</b> batch.
+</p>
+
+<p>
+<a href="#get-started"><img src="https://img.shields.io/badge/ROS_2-Humble%20·%20Jazzy-0b1020?style=flat-square&logo=ros&logoColor=white" alt="ROS 2"></a>
+<a href="#engineered-to-be-trusted"><img src="https://img.shields.io/badge/tests-passing-0b1020?style=flat-square&logo=githubactions&logoColor=white" alt="tests"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0b1020?style=flat-square" alt="MIT"></a>
+</p>
+
+<a href="#performance"><b>Performance</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#how-it-works"><b>How it works</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#get-started"><b>Get started</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#whats-next"><b>What's next</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="README.md">中文</a>
+
+<br>
+<br>
+
+<img src="docs/assets/stats-en.svg" alt="4.7× less compute per frame · 0.03% deviation from baseline · 3.6× lower loop-closure error · 100% falls back to the original" width="100%">
 
 </div>
 
 <br>
 
-<table>
-<tr>
-<td align="center" width="25%">
-<h1>4.7×</h1>
-<b>less compute per frame</b><br>
-<sub>at most; 100 Hz high‑dynamic sequence</sub>
-</td>
-<td align="center" width="25%">
-<h1>0.03 %</h1>
-<b>deviation from baseline</b><br>
-<sub>103 m building traverse, 3.1 cm mean</sub>
-</td>
-<td align="center" width="25%">
-<h1>3.6×</h1>
-<b>lower loop‑closure error</b><br>
-<sub>outdoor_run: 7.3 cm → 2.0 cm</sub>
-</td>
-<td align="center" width="25%">
-<h1>100 %</h1>
-<b>falls back to the original</b><br>
-<sub><code>batch_dt = 0</code> is bit‑exact Point‑LIO</sub>
-</td>
-</tr>
-</table>
-
----
-
-## One idea: change the update granularity
+## How far can a robot move in a millisecond?
 
 Point‑LIO showed that updating **point by point** lets LiDAR‑inertial odometry keep up with the
 most aggressive motion. The price is thousands of tiny filter updates in every frame.
 
-Batch‑LIO starts from a simple question: **how far can a robot move in one millisecond?**
+Batch‑LIO's answer: a millisecond is short enough to **compensate the motion first** and update
+**once**. Fewer updates, larger batches, and multi‑core parallelism finally pays off.
 
-Our answer: not far, so the motion inside that millisecond can be **compensated first** and the
-update done **once**. Each point is de‑skewed to the end of its window, all residuals are stacked
-into a single EKF update, and with fewer updates and larger batches, multi‑core parallelism finally
-pays off.
+<br>
+
+## Performance
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/pipeline-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/assets/pipeline-light.svg">
-  <img src="docs/assets/pipeline-light.svg" alt="Batch-LIO pipeline" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/speedup-en-dark.svg">
+  <img src="docs/assets/speedup-en-light.svg" alt="Per-frame compute: outdoor_run 4.7×, HKU_MB 3.6×, quick-shack 3.5×" width="100%">
+</picture>
+
+<br>
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/omp-en-dark.svg">
+  <img src="docs/assets/omp-en-light.svg" alt="OpenMP makes point-wise mode 36% slower but batch mode 2× faster" width="100%">
+</picture>
+
+<br>
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sweep-en-dark.svg">
+  <img src="docs/assets/sweep-en-light.svg" alt="batch_dt sweep: 1–2 ms is the sweet spot" width="100%">
+</picture>
+
+<details>
+<summary><b>Data tables</b></summary>
+
+<br>
+
+| Sequence | Scene | Point‑LIO | Batch‑LIO | Gain |
+|---|---|---:|---:|:---:|
+| outdoor_run | 100 Hz high‑dynamic outdoor loop | 2.56 ms | **0.54 ms** | **4.7×** |
+| HKU_MB | 260 s building traverse, 103 m | 16.21 ms | **4.56 ms** | **3.6×** |
+| quick‑shack | handheld indoor loop | 12.42 ms | **3.51 ms** | **3.5×** |
+
+| Sequence | Metric | Point‑LIO | Batch‑LIO |
+|---|---|---:|---:|
+| HKU_MB (103 m) | mean deviation from baseline | — | 0.031 m |
+| outdoor_run (loop) | start‑to‑end closure | 0.073 m | **0.020 m** |
+| quick‑shack (loop) | start‑to‑end closure | 0.072 m | **0.053 m** |
+
+De‑skew amplification: with a 20 ms window, drift is 7.59 m with de‑skew off and 0.51 m with it on.<br>
+Full data: [ROS 1](docs/RESULTS.md) · [ROS 2](docs/RESULTS_ROS2.md).
+
+</details>
+
+<br>
+
+## How it works
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/pipeline-en-dark.svg">
+  <img src="docs/assets/pipeline-en-light.svg" alt="Every 1 ms window: group, de-skew, KNN and plane fit, one IEKF update" width="100%">
 </picture>
 
 <table>
 <tr>
 <td width="33%" valign="top">
-
-#### ⏱ Millisecond windows
-Points are grouped by time, not by identical timestamp.
-The window length is tunable; a sweep shows 1–2 ms works best.
-
+<b>Millisecond windows</b><br>
+<sub>Points are grouped by time, not by identical timestamp. The window is tunable; 1–2 ms works best.</sub>
 </td>
 <td width="33%" valign="top">
-
-#### 🌀 In‑window de‑skew
-Every point is compensated to the window end using the filter's own angular and linear velocity.
-The transform is checked twice: by unit tests and by an amplification experiment.
-
+<b>In‑window de‑skew</b><br>
+<sub>Each point is compensated to the window end with the filter's own angular and linear velocity, verified by unit tests and an amplification experiment.</sub>
 </td>
 <td width="33%" valign="top">
-
-#### ⚡ Batching enables parallelism
-Multithreading makes point‑wise mode **slower**. After batching, it makes the pipeline
-**2× faster**. The speedup comes from the architecture, not from tuning.
-
+<b>Batching enables parallelism</b><br>
+<sub>Multithreading slows point‑wise mode down; after batching it doubles the speed. The gain comes from the architecture, not from tuning.</sub>
 </td>
 </tr>
 </table>
 
----
-
-## 📈 Performance
-
-<p align="center">
-  <img src="docs/figures/fig1_speedup.png" width="48%" alt="Per-frame compute">
-  &nbsp;
-  <img src="docs/figures/fig2_omp_causality.png" width="48%" alt="Batch enables parallelism">
-</p>
-
-| Sequence | Scene | Point‑LIO | **Batch‑LIO** | Gain |
-|---|---|---:|---:|:---:|
-| **outdoor_run** | 100 Hz high‑dynamic outdoor loop | 2.56 ms | **0.54 ms** | **4.7×** |
-| **HKU_MB** | 260 s building traverse, 103 m | 16.21 ms | **4.56 ms** | **3.6×** |
-| **quick‑shack** | handheld indoor loop | 12.42 ms | **3.51 ms** | **3.5×** |
-
-<sub>Average compute per frame; lower is better. CPU only, 32‑core x86_64. Full data: [ROS 1](docs/RESULTS.md) · [ROS 2](docs/RESULTS_ROS2.md).</sub>
-
-<details>
-<summary><b>Trajectory agreement, window sweep and ablations</b></summary>
-
 <br>
 
-**Trajectory agreement**
-
-| Sequence | Metric | Point‑LIO | Batch‑LIO |
-|---|---|---:|---:|
-| HKU_MB (103 m) | mean deviation from baseline | — | 0.031 m |
-| outdoor_run (loop) | start‑to‑end closure | 0.073 m | **0.020 m**¹ |
-| quick‑shack (loop) | start‑to‑end closure | 0.072 m | **0.053 m** |
-
-<sub>¹ ROS 1 result. On the ROS 2 rerun the same sequence gave 0.085 m (0.079 m with de‑skew off), so the closure advantage did not reproduce consistently; see [`RESULTS_ROS2.md`](docs/RESULTS_ROS2.md).</sub>
-
-**Window length**: from 0.5 to 2 ms the trajectory matches the baseline at 1.7–2.8× the speed; from 5 ms up the constant‑velocity assumption breaks down and drift grows noticeably.
-
-<img src="docs/figures/fig4_batchdt_sweep.png" width="60%" alt="batch_dt sweep">
-
-**De‑skew amplification**: with the window stretched to 20 ms, drift is 7.59 m with de‑skew off and 0.51 m with it on.
-
-**Odometry rate**: publishing per window gives about 913 Hz. Point‑LIO publishes at about 10 Hz per frame, or about 6.7 kHz per point.
-
-</details>
-
----
-
-## 🚀 Up and running in three minutes
+## Get started
 
 ```bash
 # Build: livox_ros_driver2 and Batch-LIO as sibling packages in one workspace
@@ -151,7 +121,7 @@ ln -sfn /path/to/livox_ros_driver2 livox_ros_driver2
 ln -sfn /path/to/Batch-LIO         batch_lio
 source /opt/ros/humble/setup.bash && cd .. && colcon build --symlink-install
 
-# Run with multithreading on: the configuration used in the performance table
+# Run with multithreading on: the configuration used in the performance charts
 source install/setup.bash
 ros2 run batch_lio batchlio_mapping --ros-args \
   --params-file $(ros2 pkg prefix batch_lio)/share/batch_lio/config/avia.yaml \
@@ -159,10 +129,8 @@ ros2 run batch_lio batchlio_mapping --ros-args \
 ros2 bag play <your_avia_bag>          # in a second terminal
 ```
 
-Odometry is published on `/aft_mapped_to_init`. Supports Livox Avia / Horizon, Ouster‑64 and Velodyne‑16.
-ROS 1 bags convert in one step with [`scripts/convert_bag.py`](scripts/convert_bag.py). To launch with RViz: `ros2 launch batch_lio mapping_avia.launch.py`.
-
-**Three parameters are all you need:**
+Odometry is published on `/aft_mapped_to_init`. Supports Livox Avia / Horizon, Ouster‑64 and Velodyne‑16;
+ROS 1 bags convert with [`scripts/convert_bag.py`](scripts/convert_bag.py); for Jazzy see [`docker/`](docker/README.md).
 
 | Parameter | Default | |
 |---|---|---|
@@ -170,34 +138,32 @@ ROS 1 bags convert in one step with [`scripts/convert_bag.py`](scripts/convert_b
 | `batch_omp` | `false` | multithreaded point matching |
 | `batch_deskew` | `true` | in‑window motion de‑skew |
 
----
+<br>
 
-## 🛡 Engineered to be trusted
+## Engineered to be trusted
 
-- **Switch back to the original at any time**: at `batch_dt = 0` the trajectory is **bit‑exact** with Point‑LIO, so every speedup can be checked against the original;
-- **Multithreading doesn't change results**: OpenMP on or off gives bit‑identical trajectories;
-- **Tests**: 5 gtests on the de‑skew transform, plus an end‑to‑end test that plays a real bag and checks that odometry comes out;
-- **Across ROS versions**: native ROS 2 Humble, a [Docker image](docker/README.md) for Jazzy, and the ROS 1 version archived at the `ros1-noetic` tag;
+- **Switch back to the original at any time**: at `batch_dt = 0` the trajectory is bit‑exact with Point‑LIO, so every speedup can be checked against the original.
+- **Multithreading doesn't change results**: OpenMP on or off gives bit‑identical trajectories.
+- **Tests**: 5 gtests on the de‑skew transform, plus an end‑to‑end test that plays a real bag and checks the odometry output.
+- **Across ROS versions**: native ROS 2 Humble, a Docker image for Jazzy, and the ROS 1 version archived at the `ros1-noetic` tag.
 - **Reproducible**: the A/B, sweep and ablation scripts are all in [`scripts/`](scripts/).
 
----
+<br>
 
-## 🗺 What's next
+## What's next
 
-| | |
-|:-:|---|
-| 🤖 | **Edge deployment**: bring‑up on NVIDIA Jetson hardware, with full latency, power and thermal reports |
-| 🎯 | **Ground‑truth evaluation**: ATE / RPE on public datasets with ground truth |
-| ⚙️ | **More speed**: adopt Small Point‑LIO ideas on the CPU and explore a GPU‑resident map |
+**Edge deployment**: bring‑up on NVIDIA Jetson hardware, with full latency, power and thermal reports.<br>
+**Ground‑truth evaluation**: ATE / RPE on public datasets with ground truth.<br>
+**More speed**: adopt Small Point‑LIO ideas on the CPU and explore a GPU‑resident map.
 
----
+<br>
 
 <details>
 <summary><b>About the numbers</b></summary>
 
 <br>
 
-- The baseline is Point‑LIO on the same bags with the same parameters; on ROS 2 the baseline is `batch_dt = 0` in the same binary.
+- The baseline is Point‑LIO on the same bags with the same parameters; on ROS 2 it is `batch_dt = 0` in the same binary.
 - These sequences have no ground truth: "deviation" means agreement with the Point‑LIO trajectory, and "closure" means the start‑to‑end distance on loop sequences.
 - The test machine is a 32‑core x86_64; other platforms need to be measured again.
 - The gain is compute efficiency, not odometry bandwidth: batching reduces the number of updates.
@@ -207,12 +173,11 @@ ROS 1 bags convert in one step with [`scripts/convert_bag.py`](scripts/convert_b
 
 ## Acknowledgements
 
-Batch‑LIO is built on **[Point‑LIO](https://github.com/hku-mars/Point-LIO)** from HKU MARS Lab.
-The batch‑update idea comes from the USTC undergraduate thesis *《高带宽轮式激光惯性里程计》*
-(Point‑LIWO) by 张昊鹏. De‑skew follows the FAST‑LIO / sr_lio motion‑compensation convention.
-If you use this project, please cite Point‑LIO and FAST‑LIO.
-
-Licensed under [MIT](LICENSE); parts derived from Point‑LIO, LOAM and Livox keep their BSD‑3 notices.
+Batch‑LIO is built on [Point‑LIO](https://github.com/hku-mars/Point-LIO) from HKU MARS Lab. The
+batch‑update idea comes from the USTC undergraduate thesis *《高带宽轮式激光惯性里程计》* (Point‑LIWO)
+by 张昊鹏; de‑skew follows the FAST‑LIO / sr_lio convention. If you use this project, please cite
+Point‑LIO and FAST‑LIO. Licensed under [MIT](LICENSE); parts derived from Point‑LIO, LOAM and Livox
+keep their BSD‑3 notices.
 
 <div align="center">
 <br>
