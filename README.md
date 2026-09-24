@@ -8,7 +8,7 @@
 
 <br>
 
-# 算力最高直降 4.7 倍，轨迹几乎不变。
+# 同样的精度，四分之一的算力。
 
 **Batch‑LIO** 重新设计了 Point‑LIO 的更新节奏：<br>
 不再逐点更新，而是以 **1 毫秒**为单位整批更新。
@@ -28,17 +28,22 @@
 
 <table>
 <tr>
-<td align="center" width="33%">
+<td align="center" width="25%">
 <h1>4.7×</h1>
 <b>每帧算力最高降低</b><br>
 <sub>100 Hz 剧烈运动序列</sub>
 </td>
-<td align="center" width="33%">
+<td align="center" width="25%">
 <h1>0.03 %</h1>
 <b>与基线的轨迹偏差</b><br>
 <sub>103 m 楼宇穿行，平均 3.1 cm</sub>
 </td>
-<td align="center" width="33%">
+<td align="center" width="25%">
+<h1>3.6×</h1>
+<b>闭环误差更小</b><br>
+<sub>outdoor_run：7.3 cm → 2.0 cm</sub>
+</td>
+<td align="center" width="25%">
 <h1>100 %</h1>
 <b>可回退到原版</b><br>
 <sub><code>batch_dt = 0</code> 与 Point‑LIO 逐位一致</sub>

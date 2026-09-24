@@ -8,7 +8,7 @@
 
 <br>
 
-# Up to 4.7× less compute. Virtually the same trajectory.
+# Same accuracy. A quarter of the compute.
 
 **Batch‑LIO** changes how often Point‑LIO updates the filter:<br>
 instead of updating point by point, it updates once per **millisecond** batch.
@@ -28,17 +28,22 @@ instead of updating point by point, it updates once per **millisecond** batch.
 
 <table>
 <tr>
-<td align="center" width="33%">
+<td align="center" width="25%">
 <h1>4.7×</h1>
 <b>less compute per frame</b><br>
 <sub>at most; 100 Hz high‑dynamic sequence</sub>
 </td>
-<td align="center" width="33%">
+<td align="center" width="25%">
 <h1>0.03 %</h1>
 <b>deviation from baseline</b><br>
 <sub>103 m building traverse, 3.1 cm mean</sub>
 </td>
-<td align="center" width="33%">
+<td align="center" width="25%">
+<h1>3.6×</h1>
+<b>lower loop‑closure error</b><br>
+<sub>outdoor_run: 7.3 cm → 2.0 cm</sub>
+</td>
+<td align="center" width="25%">
 <h1>100 %</h1>
 <b>falls back to the original</b><br>
 <sub><code>batch_dt = 0</code> is bit‑exact Point‑LIO</sub>
