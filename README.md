@@ -1,214 +1,213 @@
 <div align="center">
 
-# Batch‑LIO
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/hero-light.svg">
+  <img src="docs/assets/hero-light.svg" alt="Batch-LIO：每 1 ms 窗口一次 EKF 更新" width="100%">
+</picture>
 
-**A batch‑wise extension of [Point‑LIO](https://github.com/hku-mars/Point-LIO):**
-per‑~1 ms batch EKF update with in‑batch motion de‑skew —
-**higher‑bandwidth, lower‑compute LiDAR‑inertial odometry.**
+<br>
 
-🌐 **English** · [中文](README.zh-CN.md)
+# 算力最高直降 4.7 倍，轨迹几乎不变。
 
-![ROS2](https://img.shields.io/badge/ROS_2-Humble-22314E?logo=ros)
-![C++](https://img.shields.io/badge/C%2B%2B-14-00599C?logo=c%2B%2B&logoColor=white)
-![Build](https://img.shields.io/badge/colcon%20test-passing-brightgreen)
-![License](https://img.shields.io/badge/license-MIT-blue)
+**Batch‑LIO** 重新设计了 Point‑LIO 的更新节奏：<br>
+不再逐点更新，而是以 **1 毫秒**为单位整批更新。
+
+<br>
+
+[![ROS 2 Humble](https://img.shields.io/badge/ROS_2-Humble-22314E?style=for-the-badge&logo=ros&logoColor=white)](#-三分钟上手)
+[![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-22314E?style=for-the-badge&logo=ros&logoColor=white)](docker/README.md)
+[![colcon test](https://img.shields.io/badge/tests-passing-3fb950?style=for-the-badge)](#-工程品质)
+[![License: MIT](https://img.shields.io/badge/license-MIT-0969da?style=for-the-badge)](LICENSE)
+
+<b>中文</b> · <a href="README.en.md">English</a>
 
 </div>
 
----
+<br>
 
-Batch‑LIO reproduces **innovation #1** of the USTC undergraduate thesis
-*《高带宽轮式激光惯性里程计》(Point‑LIWO — Batch‑based Direct Point LiDAR‑IMU‑Wheeled‑speed Odometry)*
-by 张昊鹏. It is built directly on HKU‑MARS **Point‑LIO** and kept A/B‑comparable with it
-(CPU‑only; wheel‑speed / innovation #2 is out of scope).
-
-## Table of contents
-
-| | Section |
-|---|---|
-| 1 | [What it changes vs Point‑LIO](#what-it-changes-vs-pointlio) |
-| 2 | [Results](#results) |
-| 3 | [Build & Run (ROS 2 Humble)](#build--run-ros-2-humble) |
-| 4 | [Test](#test) |
-| 5 | [Repository layout](#repository-layout) |
-| 6 | [Legacy: ROS 1 Noetic](#legacy-ros-1-noetic) |
-| 7 | [Attribution & license](#attribution--license) |
-
----
-
-## What it changes vs Point‑LIO
-
-Point‑LIO updates the EKF **point‑wise** (one update per distinct point timestamp) and already
-row‑stacks the measurement Jacobian over a group of same‑timestamp points. Batch‑LIO changes two
-things and adds OpenMP:
-
-1. **1 ms time‑window grouping** — points are grouped into fixed ~1 ms windows instead of by
-   identical timestamp (`time_compressing_batch`, `include/common_lib.h`).
-2. **In‑batch de‑skew** — because a window now spans many timestamps, each point is
-   motion‑compensated to the window's reference (last‑point) time using the EKF state's
-   angular/linear velocity, then all valid residuals are row‑stacked into a **single EKF update
-   per window** (`src/deskew.h`, applied in `src/laserMapping.cpp`). This implements thesis
-   eq. 3.44–3.47:
-3. **OpenMP** on the per‑point KNN + plane‑fit loop (`src/Estimator.cpp`). OpenMP only pays off
-   **after** batching enlarges the groups — on Point‑LIO's tiny per‑timestamp groups it is slower.
-
-```
-Δtⱼ = tⱼ − t_last                 (≤ 0 within a window)
-Rⱼ  = Exp(ω · Δtⱼ)                (ω = state body angular velocity)
-Tⱼ  = R_Iᵀ · v · Δtⱼ              (v = state world linear velocity; R_I = state rotation)
-p'ⱼ = Rⱼ · pⱼ + Tⱼ
-```
-
-All changes are gated by ROS params (defaults make it equivalent to Point‑LIO when `batch_dt ≤ 0`).
-
-| param | default | meaning |
-|-------|---------|---------|
-| `batch_dt` | `0.001` | batch window length in **seconds** (`≤ 0` ⇒ point‑wise = Point‑LIO) |
-| `batch_omp` | `false` | OpenMP on the KNN+plane‑fit loop |
-| `batch_deskew` | `true` | in‑window de‑skew on/off (ablation toggle) |
+<table>
+<tr>
+<td align="center" width="33%">
+<h1>4.7×</h1>
+<b>每帧算力最高降低</b><br>
+<sub>100 Hz 剧烈运动序列</sub>
+</td>
+<td align="center" width="33%">
+<h1>0.03 %</h1>
+<b>与基线的轨迹偏差</b><br>
+<sub>103 m 楼宇穿行，平均 3.1 cm</sub>
+</td>
+<td align="center" width="33%">
+<h1>100 %</h1>
+<b>可回退到原版</b><br>
+<sub><code>batch_dt = 0</code> 与 Point‑LIO 逐位一致</sub>
+</td>
+</tr>
+</table>
 
 ---
 
-## Results
+## 一个想法，改变更新的粒度
 
-A/B vs pristine Point‑LIO, same bag and parameters, CPU‑only on a 32‑core x86_64 machine.
-Full numbers in [`docs/RESULTS.md`](docs/RESULTS.md) (ROS 1) and [`docs/RESULTS_ROS2.md`](docs/RESULTS_ROS2.md)
-(re‑run on the ROS 2 port).
+Point‑LIO 证明了**逐点更新**能让激光‑惯性里程计跟上最剧烈的运动，
+代价是每一帧都要执行成千上万次微小的滤波更新。
 
-> **No ground truth** is used. "Accuracy" below means **agreement with the Point‑LIO baseline**
-> (mean |Δpos|) plus **loop‑closure drift** on return‑loop bags — not error vs a true trajectory.
-> The only comparison object is Point‑LIO.
+Batch‑LIO 提出了一个问题：**一毫秒之内，机器人又能移动多远？**
 
-### Per‑frame compute: 2.3–4.7× faster
+我们的答案是：可以短到先做**运动补偿**，再**一次性**完成更新。
+每个点先被精确地补偿到窗口末时刻，然后所有残差合并成一次 EKF 更新。
+更新次数减少了，每一批点也足够多，多核并行终于有了用武之地。
 
-![speedup](docs/figures/fig1_speedup.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/pipeline-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/pipeline-light.svg">
+  <img src="docs/assets/pipeline-light.svg" alt="Batch-LIO 处理流程" width="100%">
+</picture>
 
-| bag | point‑wise (ms) | batch 1 ms (ms) | speedup |
-|-----|-----------------|-----------------|---------|
-| quick‑shack (ROS 2) | 12.42 | 3.51 | **3.5×** |
-| outdoor_run (ROS 2) | 2.56 | 0.54 | **4.7×** |
+<table>
+<tr>
+<td width="33%" valign="top">
 
-Batch‑LIO matches the baseline trajectory closely and closes the `outdoor_run` loop *better* than
-baseline (0.020 m vs 0.073 m).
+#### ⏱ 毫秒级时间窗
+按时间分组，而不是按时间戳分组。
+窗口长度可调，扫描实验表明 1–2 ms 效果最好。
 
-### OpenMP only helps after batching ("batch enables parallelism")
-![omp](docs/figures/fig2_omp_causality.png)
+</td>
+<td width="33%" valign="top">
 
-### batch_dt sweep: 1–2 ms is the sweet spot
-![sweep](docs/figures/fig4_batchdt_sweep.png)
+#### 🌀 窗内运动去畸变
+每个点都按滤波器估计的角速度和线速度补偿到窗口末时刻。
+补偿公式有单元测试和放大实验两重验证。
 
-### Odometry rate depends on publish policy (not a bandwidth gain)
+</td>
+<td width="33%" valign="top">
 
-Batching **reduces** the EKF update count (windows ≪ points), so the raw max publish rate goes
-**down**, not up — the win is compute, not bandwidth. Point‑LIO isn't limited to 10 Hz either; its
-per‑point mode reaches ~6.7 kHz (noisy micro‑updates). For honesty:
+#### ⚡ 分批带来并行
+逐点模式下开多线程**反而更慢**，分批之后多线程能再**快一倍**。
+加速来自架构本身，而不是调参。
 
-| scheme | publish policy | stable odom rate |
-|--------|----------------|------------------|
-| Point‑LIO | per frame (default) | ~10 Hz |
-| Point‑LIO | per point | ~6.7 kHz (noisy) |
-| Batch‑LIO 1 ms | per window | ~913 Hz |
+</td>
+</tr>
+</table>
 
 ---
 
-## Build & Run (ROS 2 Humble)
+## 📈 性能
 
-Native ROS 2 Humble (`/opt/ros/humble`). The package depends on `livox_ros_driver2`
-(its vendored SDK2 ships a prebuilt `liblivox_lidar_sdk_shared.so`, so no separate SDK build).
+<p align="center">
+  <img src="docs/figures/fig1_speedup.png" width="48%" alt="每帧算力对比">
+  &nbsp;
+  <img src="docs/figures/fig2_omp_causality.png" width="48%" alt="分批使并行成为可能">
+</p>
 
-### 1 · Workspace + build
+| 序列 | 场景 | Point‑LIO | **Batch‑LIO** | 提升 |
+|---|---|---:|---:|:---:|
+| **outdoor_run** | 100 Hz 高动态户外回环 | 2.56 ms | **0.54 ms** | **4.7×** |
+| **HKU_MB** | 260 s 楼宇穿行，103 m | 16.21 ms | **4.56 ms** | **3.6×** |
+| **quick‑shack** | 手持室内回环 | 12.42 ms | **3.51 ms** | **3.5×** |
+
+<sub>每帧平均耗时，数值越低越好。纯 CPU，32 核 x86_64。完整数据：[ROS 1](docs/RESULTS.md) · [ROS 2](docs/RESULTS_ROS2.md)。</sub>
+
+<details>
+<summary><b>轨迹一致性、窗口长度扫描与消融实验</b></summary>
+
+<br>
+
+**轨迹一致性**
+
+| 序列 | 指标 | Point‑LIO | Batch‑LIO |
+|---|---|---:|---:|
+| HKU_MB（103 m） | 相对基线平均偏差 | — | 0.031 m |
+| outdoor_run（回环） | 首尾闭合误差 | 0.073 m | **0.020 m**¹ |
+| quick‑shack（回环） | 首尾闭合误差 | 0.072 m | **0.053 m** |
+
+<sub>¹ ROS 1 结果。ROS 2 复测时同一序列为 0.085 m（去畸变关闭时为 0.079 m），闭合误差的优势没有稳定复现，详见 [`RESULTS_ROS2.md`](docs/RESULTS_ROS2.md)。</sub>
+
+**窗口长度**：0.5–2 ms 时轨迹与基线吻合，同时快 1.7–2.8 倍；≥ 5 ms 时匀速假设不再成立，漂移明显增大。
+
+<img src="docs/figures/fig4_batchdt_sweep.png" width="60%" alt="batch_dt 扫描">
+
+**去畸变放大实验**：把窗口放大到 20 ms，关闭去畸变时漂移为 7.59 m，打开后降到 0.51 m。
+
+**里程计频率**：按窗口发布约 913 Hz。Point‑LIO 按帧发布约 10 Hz，按点发布约 6.7 kHz。
+
+</details>
+
+---
+
+## 🚀 三分钟上手
 
 ```bash
-# livox_ros_driver2 as a sibling package; batch_lio symlinked from this repo
-mkdir -p ~/batch_lio_ws/src
-ln -sfn /path/to/livox_ros_driver2  ~/batch_lio_ws/src/livox_ros_driver2
-ln -sfn /path/to/Batch-LIO         ~/batch_lio_ws/src/batch_lio
-source /opt/ros/humble/setup.bash
-cd ~/batch_lio_ws && colcon build --symlink-install
+# 构建：livox_ros_driver2 与 Batch‑LIO 作为同级包放进工作区
+mkdir -p ~/batch_lio_ws/src && cd ~/batch_lio_ws/src
+ln -sfn /path/to/livox_ros_driver2 livox_ros_driver2
+ln -sfn /path/to/Batch-LIO         batch_lio
+source /opt/ros/humble/setup.bash && cd .. && colcon build --symlink-install
+
+# 运行：开启多线程，即为性能表中的配置
+source install/setup.bash
+ros2 run batch_lio batchlio_mapping --ros-args \
+  --params-file $(ros2 pkg prefix batch_lio)/share/batch_lio/config/avia.yaml \
+  -p batch_omp:=true
+ros2 bag play <your_avia_bag>          # 另开一个终端
 ```
 
-### 2 · Convert a ROS 1 Livox Avia bag → ROS 2 (mcap)
+里程计发布在 `/aft_mapped_to_init`。支持 Livox Avia / Horizon、Ouster‑64、Velodyne‑16。
+ROS 1 bag 可用 [`scripts/convert_bag.py`](scripts/convert_bag.py) 一键转换；带 RViz 的启动方式：`ros2 launch batch_lio mapping_avia.launch.py`。
 
-```bash
-python3 -m pip install --user rosbags pyyaml
-python3 scripts/convert_bag.py  your_avia.bag  ~/batch_lio_ws/bags/your_avia
-# renames livox_ros_driver/CustomMsg -> livox_ros_driver2/msg/CustomMsg (byte-identical wire format)
-```
+**三个参数，全部掌控：**
 
-### 3 · Run
-
-```bash
-source ~/batch_lio_ws/install/setup.bash
-ros2 launch batch_lio mapping_avia.launch.py            # rviz2 on; rviz:=false for headless
-ros2 bag play ~/batch_lio_ws/bags/your_avia             # in another shell
-ros2 topic echo /aft_mapped_to_init                     # odometry
-```
-
-Works on standard Livox Avia bags (`/livox/lidar` = `livox_ros_driver2/msg/CustomMsg`,
-`/livox/imu` = `sensor_msgs/msg/Imu`), e.g. the HKU‑MARS / FAST‑LIO Avia sequences.
-Odometry on `/aft_mapped_to_init`; per‑frame stage timings as `[ mapping ]:` lines;
-trajectory logged to `Log/pos_log.txt` when `runtime_pos_log_enable` is set.
+| 参数 | 默认 | |
+|---|---|---|
+| `batch_dt` | `0.001` | 时间窗长度（秒），设为 `0` 即原版 Point‑LIO |
+| `batch_omp` | `false` | 多线程点匹配 |
+| `batch_deskew` | `true` | 窗内运动去畸变 |
 
 ---
 
-## Test
+## 🛡 工程品质
 
-```bash
-cd ~/batch_lio_ws
-colcon test --packages-select batch_lio          # deskew gtest (5) + smoke launch_test (1)
-colcon test-result --all                         # 8 tests, 0 failures
-```
-
-| test | what it checks |
-|---|---|
-| `test_deskew` (gtest) | the eq. 3.44–3.47 de‑skew transform (pure translation, pure rotation, body‑frame velocity) |
-| `test_smoke.py` (launch_test) | launches the node, plays a converted bag, asserts odometry is published |
-
-A/B harness (speedup + de‑skew ablation):
-```bash
-bash scripts/ablations.sh
-python3 scripts/compare_traj.py LABEL run/out/<run>/pos_log.txt run/out/<run>/node.log [baseline]
-```
+- **随时可以切回原版**：`batch_dt = 0` 时与 Point‑LIO 的轨迹**逐位相同**，每个加速比都能回到原版复核；
+- **多线程不影响结果**：OpenMP 开或关，轨迹逐位相同；
+- **测试覆盖**：去畸变公式有 5 项 gtest，另有一项端到端测试，真实 bag 进、里程计出；
+- **跨版本**：原生支持 ROS 2 Humble，Jazzy 提供 [Docker 镜像](docker/README.md)，ROS 1 版本在 `ros1-noetic` tag 归档；
+- **可复现**：A/B 对比、参数扫描与消融脚本全部在 [`scripts/`](scripts/) 中。
 
 ---
 
-## Repository layout
+## 🗺 下一站
 
-```
-src/            modified Point‑LIO sources
-  deskew.h          NEW: in‑batch de‑skew (eq 3.44‑3.47), header‑only + unit‑tested
-  laserMapping.cpp  batch grouping + per‑window de‑skew before the EKF update + OMP control
-  Estimator.cpp     OpenMP on the KNN + plane‑fit loop
-  parameters.*      batch_dt / batch_omp / batch_deskew params (type‑tolerant loader)
-include/common_lib.h  time_compressing_batch (1 ms windows) + ROS 2 time helpers
-launch/*.py     ROS 2 python launch (mapping_{avia,horizon,ouster64,velody16}, avia_batch)
-config/*.yaml   ROS 2 params files (wrapped in /**: {ros__parameters:})
-scripts/        convert_bag.py (ROS1→ROS2), run_lio.sh, ablations.sh, compare_traj.py
-test/           test_deskew.cpp (gtest), test_smoke.py (launch_test)
-docs/           RESULTS.md, RESULTS_ROS2.md, superpowers/{specs,plans}/, figures/
-```
+| | |
+|:-:|---|
+| 🤖 | **边缘部署**：NVIDIA Jetson 实机适配，提供延迟、功耗与温度的完整报告 |
+| 🎯 | **真值评测**：在带真值的公开数据集上报告 ATE / RPE |
+| ⚙️ | **进一步提速**：CPU 端吸收 Small Point‑LIO 的思路，并探索 GPU 常驻地图 |
 
 ---
 
-## Legacy: ROS 1 Noetic
+<details>
+<summary><b>关于数字</b></summary>
 
-The original ROS 1 Noetic (catkin) version is preserved on the `ros1-noetic` git tag. The ROS 2
-port was a thin faithful port — same algorithm, same params; the only changes are the ROS plumbing
-(ament, rclcpp, tf2, livox_ros_driver2). See the design spec and implementation plan under
-`docs/superpowers/`.
+<br>
 
-```bash
-git checkout ros1-noetic        # inspect the original ROS 1 version
-```
+- 对照对象是 Point‑LIO，同一 bag、同一参数；ROS 2 数据的对照为同一二进制下的 `batch_dt = 0`。
+- 这些序列没有真值：「偏差」指与 Point‑LIO 轨迹的吻合度，「闭环误差」指回环序列的首尾距离。
+- 测试平台为 32 核 x86_64，其他平台需要重新测量。
+- 提升的是算力效率，而不是里程计带宽：分批会减少更新次数。
+- 本项目复现 Point‑LIWO 的创新点一，不包含轮速计。
 
----
+</details>
 
-## Attribution & license
+## 致谢
 
-- Built on **[Point‑LIO](https://github.com/hku-mars/Point-LIO)** (HKU‑MARS); please cite
-  Point‑LIO and FAST‑LIO. The batch‑update idea reproduced here is from the USTC undergraduate
-  thesis *《高带宽轮式激光惯性里程计》(Point‑LIWO)* by 张昊鹏.
-- De‑skew follows the FAST‑LIO / sr_lio motion‑compensation convention; the map uses an
-  iVox‑style hashed‑voxel structure.
-- Licensed under **MIT** (see [`LICENSE`](LICENSE)); portions derived from
-  Point‑LIO / LOAM / Livox retain their BSD‑3 notices. This is a research reproduction.
+Batch‑LIO 基于港大 MARS 实验室的 **[Point‑LIO](https://github.com/hku-mars/Point-LIO)**，
+分批更新的思路来自中国科学技术大学张昊鹏的本科毕业设计《高带宽轮式激光惯性里程计》（Point‑LIWO）。
+去畸变沿用 FAST‑LIO 和 sr_lio 的运动补偿写法。使用本项目时请引用 Point‑LIO 与 FAST‑LIO。
+
+本项目采用 [MIT](LICENSE) 许可，源自 Point‑LIO、LOAM、Livox 的部分保留其 BSD‑3 声明。
+
+<div align="center">
+<br>
+<sub>如果 Batch‑LIO 对你有帮助，欢迎点一个 ⭐</sub>
+</div>
